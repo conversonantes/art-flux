@@ -51,8 +51,8 @@ La obra es el repositorio del proceso; con título y equipo basta para empezar.
 
 | ID | Historia | Criterios de aceptación | Prioridad | Corte |
 | --- | --- | --- | --- | --- |
-| HU-05 | Como **admin**, quiero crear una obra, para agrupar sus sesiones y planteamientos. | Una obra tiene título (obligatorio), estado (en búsqueda, en montaje, en temporada, archivada), temas y un texto de acuerdo de visibilidad · Puedo editar todo después · Una sesión anterior del grupo puede asociarse a la obra (así la sesión 1 de *Cristina* queda como su origen) | Debe | 1 |
-| HU-06 | Como **admin**, quiero armar el equipo de la obra con sus roles artísticos, para saber quién hace qué. | Agrego miembros del grupo a la obra · Cada persona puede tener varios roles: Owner, Director, Actor, Técnico · Los roles no cambian permisos | Debería | 1 |
+| HU-05 | Como **admin**, quiero crear una obra, para agrupar sus sesiones y planteamientos. | Una obra tiene título (obligatorio), estado (en búsqueda, en montaje, en temporada, archivada), temas y un texto de acuerdo de visibilidad · Puedo editar todo después · La obra tiene una dirección propia dentro del grupo (`conversonantes/cristina`) que no cambia al editar el título · Una sesión anterior del grupo puede asociarse a la obra (así la sesión 1 de *Cristina* queda como su origen); **esta parte llega con HU-07**, cuando existan las sesiones | Debe | 1 |
+| HU-06 | Como **admin**, quiero armar el equipo de la obra con sus roles artísticos, para saber quién hace qué. | Agrego miembros del grupo a la obra (solo personas que ya están en el grupo) y puedo quitarlas del equipo sin sacarlas del grupo · Cada persona puede tener varios roles: Owner, Director, Actor, Técnico (son etiquetas; el modelo acepta otros roles para otros procesos creativos) · Los roles no cambian permisos · Quien crea la obra no entra al equipo automáticamente: el admin decide quién participa y con qué rol | Debería | 1 |
 
 ## Épica 3 · Planear la sesión
 

@@ -1,8 +1,11 @@
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useApi } from "../api/ApiProvider";
+import { STATUS_LABEL } from "../projectLabels";
 import { useAuth, useSession } from "../auth/AuthProvider";
 import { lastGroup } from "../storage";
-import { Avatar, ErrorNote, Lead, LinkButton, Loading, Mono, Page, RoleTag, TextButton } from "../ui";
+import { Avatar, ErrorNote, Lead, LinkButton, Loading, Mono, Page, RoleTag, Tag, TextButton } from "../ui";
 import { useGroup } from "./useGroup";
 
 const NEW_GROUP = "__nuevo__";
@@ -14,6 +17,12 @@ export function GroupScreen() {
   const { client } = useAuth();
   const { user } = useSession();
   const { groups, group, members, role } = useGroup(handle);
+  const api = useApi();
+  const projects = useQuery({
+    queryKey: ["projects", group?.id],
+    queryFn: () => api.projects(group!.id),
+    enabled: !!group,
+  });
 
   useEffect(() => {
     if (group) lastGroup.set(group.id);
@@ -74,12 +83,56 @@ export function GroupScreen() {
 
       <h1 className="mt-8 text-5xl">{group.name}</h1>
       <div className="mt-3">
-        <Lead>Aquí van a vivir las obras y las sesiones. Por ahora, invita a tu gente.</Lead>
+        <Lead>Aquí vive el proceso del grupo: obras, sesiones y ejercicios.</Lead>
       </div>
+
+      <section className="mt-8">
+        <div className="flex items-center justify-between border-b border-linea pb-2">
+          <h2 className="text-xl font-bold">Obras</h2>
+          {role === "admin" && (
+            <Link
+              to="/$handle/obras/nueva"
+              params={{ handle: group.handle }}
+              className="inline-flex min-h-tactil items-center px-2 text-lg font-semibold text-verde"
+            >
+              + Nueva obra
+            </Link>
+          )}
+        </div>
+        {projects.isPending && <Mono>Cargando…</Mono>}
+        {projects.isError && <ErrorNote error={projects.error} />}
+        {projects.data?.length === 0 && (
+          <p className="py-4 text-lg text-gris">
+            Todavía no hay obras.{role === "admin" ? " Crea la primera para empezar a registrar." : ""}
+          </p>
+        )}
+        <ul>
+          {projects.data?.map((p) => (
+            <li key={p.id} className="border-b border-linea">
+              <Link
+                to="/$handle/$slug"
+                params={{ handle: group.handle, slug: p.slug }}
+                className="flex items-center gap-4 py-4"
+              >
+                <span className="flex-1">
+                  <span className="block text-xl font-bold">{p.title}</span>
+                  <Mono>
+                    {group.handle}/{p.slug}
+                  </Mono>
+                </span>
+                <Tag>{STATUS_LABEL[p.status].toLowerCase()}</Tag>
+                <span aria-hidden className="text-2xl">›</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       {role === "admin" && (
         <div className="mt-6">
-          <LinkButton to={`/${group.handle}/invitar`}>Invitar personas</LinkButton>
+          <LinkButton to={`/${group.handle}/invitar`} variant="outline">
+            Invitar personas
+          </LinkButton>
         </div>
       )}
 

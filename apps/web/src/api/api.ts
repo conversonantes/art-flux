@@ -24,6 +24,33 @@ export interface InviteDto {
   acceptedAt?: string;
 }
 
+export const PROJECT_STATUSES = ["searching", "staging", "running", "archived"] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+export interface ProjectDto {
+  id: string;
+  groupId: string;
+  slug: string;
+  title: string;
+  status: ProjectStatus;
+  themes: string[];
+  visibilityAgreement?: string;
+  createdAt: string;
+}
+
+export interface ProjectInput {
+  title: string;
+  status: ProjectStatus;
+  themes: string[];
+  visibilityAgreement: string;
+}
+
+export interface TeamMemberDto {
+  userId: string;
+  roles: string[];
+  displayName?: string;
+}
+
 export type StartDto =
   | { destination: "group"; group: GroupDto }
   | { destination: "choose"; groups: GroupDto[] }
@@ -50,6 +77,13 @@ export interface Api {
   createInvite(groupId: string, input: { label?: string }): Promise<InviteDto>;
   revokeInvite(inviteId: string): Promise<void>;
   acceptInvite(token: string): Promise<GroupDto>;
+  projects(groupId: string): Promise<ProjectDto[]>;
+  project(groupId: string, slug: string): Promise<ProjectDto>;
+  createProject(groupId: string, input: ProjectInput): Promise<ProjectDto>;
+  updateProject(projectId: string, input: Partial<ProjectInput>): Promise<ProjectDto>;
+  team(projectId: string): Promise<TeamMemberDto[]>;
+  setRoles(projectId: string, userId: string, roles: string[]): Promise<void>;
+  removeFromTeam(projectId: string, userId: string): Promise<void>;
 }
 
 /** HTTP implementation. `credential()` is awaited per request so refreshed tokens are used. */
@@ -82,5 +116,12 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
     createInvite: (groupId, input) => request("POST", `/groups/${groupId}/invites`, input),
     revokeInvite: (inviteId) => request("DELETE", `/invites/${inviteId}`),
     acceptInvite: (token) => request("POST", "/invites/accept", { token }),
+    projects: (groupId) => request("GET", `/groups/${groupId}/projects`),
+    project: (groupId, slug) => request("GET", `/groups/${groupId}/projects/${encodeURIComponent(slug)}`),
+    createProject: (groupId, input) => request("POST", `/groups/${groupId}/projects`, input),
+    updateProject: (projectId, input) => request("PATCH", `/projects/${projectId}`, input),
+    team: (projectId) => request("GET", `/projects/${projectId}/team`),
+    setRoles: (projectId, userId, roles) => request("PUT", `/projects/${projectId}/team/${userId}`, { roles }),
+    removeFromTeam: (projectId, userId) => request("DELETE", `/projects/${projectId}/team/${userId}`),
   };
 }

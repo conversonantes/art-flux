@@ -8,10 +8,14 @@ import {
 import { AcceptInviteScreen } from "./screens/AcceptInviteScreen";
 import { GroupScreen } from "./screens/GroupScreen";
 import { HomeScreen } from "./screens/HomeScreen";
+import { EditProjectScreen } from "./screens/EditProjectScreen";
 import { InviteScreen } from "./screens/InviteScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { NewGroupScreen } from "./screens/NewGroupScreen";
+import { NewProjectScreen } from "./screens/NewProjectScreen";
+import { ProjectScreen } from "./screens/ProjectScreen";
 import { RequireAuth } from "./screens/RequireAuth";
+import { TeamScreen } from "./screens/TeamScreen";
 
 const root = createRootRoute({ component: Outlet });
 
@@ -36,6 +40,11 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/i/$token", component: AcceptInviteScreen }),
   protectedRoute("/$handle", GroupScreen),
   protectedRoute("/$handle/invitar", InviteScreen),
+  protectedRoute("/$handle/obras/nueva", NewProjectScreen),
+  // Project slugs can never be "invitar", "obras", "nueva", "editar" or "equipo" (RESERVED_PROJECT_SLUGS).
+  protectedRoute("/$handle/$slug", ProjectScreen),
+  protectedRoute("/$handle/$slug/editar", EditProjectScreen),
+  protectedRoute("/$handle/$slug/equipo", TeamScreen),
 ]);
 
 export function createAppRouter(history?: RouterHistory) {

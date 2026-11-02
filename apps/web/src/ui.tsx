@@ -143,3 +143,32 @@ export function ErrorNote({ error }: { error: unknown }) {
     </p>
   );
 }
+
+/** Toggle pill used for status and roles: the highlighter marks what is on. */
+export function Chip({
+  selected,
+  className = "",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { selected: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={`min-h-[48px] rounded-2xl border px-4 text-lg transition disabled:opacity-60 ${
+        selected
+          ? "border-2 border-grafito bg-resaltador font-semibold"
+          : "border-linea bg-hoja text-grafito"
+      } ${className}`}
+      {...props}
+    />
+  );
+}
+
+/** Small read-only label: "#tema", "en montaje", "solo el grupo". */
+export function Tag({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "status" }) {
+  return tone === "status" ? (
+    <span className="rounded-af-chico bg-verde px-2 py-1 font-mono text-sm text-white">{children}</span>
+  ) : (
+    <span className="rounded-af-chico border border-linea bg-hoja px-2 py-1 font-mono text-sm">{children}</span>
+  );
+}

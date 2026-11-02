@@ -1,5 +1,13 @@
 import { vi } from "vitest";
-import { ApiError, type Api, type GroupDto, type InviteDto, type MemberDto } from "../api/api";
+import {
+  ApiError,
+  type Api,
+  type GroupDto,
+  type InviteDto,
+  type MemberDto,
+  type ProjectDto,
+  type TeamMemberDto,
+} from "../api/api";
 import type { AuthClient, AuthSession } from "../auth/AuthClient";
 
 export function fakeAuth(initial: AuthSession | null = null) {
@@ -28,11 +36,22 @@ export function fakeAuth(initial: AuthSession | null = null) {
 export const me: AuthSession = { credential: "cred", user: { id: "me", name: "Santi", email: "santi@correo.com" } };
 
 /** An in-memory API that behaves like the real one for the flows under test. */
-export function fakeApi(seed: { groups?: GroupDto[]; members?: Record<string, MemberDto[]>; invites?: InviteDto[] } = {}) {
+export function fakeApi(
+  seed: {
+    groups?: GroupDto[];
+    members?: Record<string, MemberDto[]>;
+    invites?: InviteDto[];
+    projects?: ProjectDto[];
+    team?: Record<string, TeamMemberDto[]>;
+  } = {},
+) {
   const state = {
     groups: [...(seed.groups ?? [])],
     members: { ...(seed.members ?? {}) },
     invites: [...(seed.invites ?? [])],
+    // Copies: the API fake mutates projects, and the seeds are shared constants.
+    projects: (seed.projects ?? []).map((p) => ({ ...p })),
+    team: { ...(seed.team ?? {}) } as Record<string, TeamMemberDto[]>,
   };
   let n = 0;
 
@@ -79,6 +98,49 @@ export function fakeApi(seed: { groups?: GroupDto[]; members?: Record<string, Me
       if (!group) throw new ApiError(410, "invite_invalid", "Este enlace ya no sirve. Pídele a un admin uno nuevo.");
       return group;
     }),
+    projects: vi.fn(async (groupId) => state.projects.filter((p) => p.groupId === groupId)),
+    project: vi.fn(async (groupId, slug) => {
+      const project = state.projects.find((p) => p.groupId === groupId && p.slug === slug);
+      if (!project) throw new ApiError(404, "not_found", "No encontramos esa obra");
+      return project;
+    }),
+    createProject: vi.fn(async (groupId, input) => {
+      const project: ProjectDto = {
+        id: `p${++n}`,
+        groupId,
+        slug: input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        title: input.title,
+        status: input.status,
+        themes: input.themes,
+        ...(input.visibilityAgreement ? { visibilityAgreement: input.visibilityAgreement } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      state.projects.push(project);
+      return project;
+    }),
+    updateProject: vi.fn(async (projectId, input) => {
+      const project = state.projects.find((p) => p.id === projectId)!;
+      const { visibilityAgreement, ...rest } = input;
+      Object.assign(project, rest);
+      if (visibilityAgreement !== undefined) {
+        if (visibilityAgreement) project.visibilityAgreement = visibilityAgreement;
+        else delete project.visibilityAgreement;
+      }
+      return project;
+    }),
+    team: vi.fn(async (projectId) => state.team[projectId] ?? []),
+    setRoles: vi.fn(async (projectId, userId, roles) => {
+      const list = (state.team[projectId] ??= []);
+      const existing = list.find((m) => m.userId === userId);
+      if (existing) existing.roles = roles;
+      else {
+        const name = Object.values(state.members).flat().find((m) => m.userId === userId)?.displayName;
+        list.push({ userId, roles, ...(name ? { displayName: name } : {}) });
+      }
+    }),
+    removeFromTeam: vi.fn(async (projectId, userId) => {
+      state.team[projectId] = (state.team[projectId] ?? []).filter((m) => m.userId !== userId);
+    }),
   };
   return { api, state };
 }
@@ -90,3 +152,35 @@ export const conversonantes: GroupDto = {
   city: "Medellín",
   createdAt: "2026-11-02T10:00:00Z",
 };
+
+export const cristina: ProjectDto = {
+  id: "p-cristina",
+  groupId: "g-conv",
+  slug: "cristina",
+  title: "Cristina",
+  status: "staging",
+  themes: ["memoria", "duelo"],
+  visibilityAgreement: "Podemos mostrar fotos, no audios.",
+  createdAt: "2026-11-02T10:00:00Z",
+};
+
+/** A group with an admin (me), two members and the project "Cristina" with a small team. */
+export function seededProject(role: "admin" | "member" = "admin") {
+  return fakeApi({
+    groups: [conversonantes],
+    members: {
+      "g-conv": [
+        { userId: "me", role, displayName: "Santi" },
+        { userId: "manu", role: "member", displayName: "Manu" },
+        { userId: "kokoro", role: "member", displayName: "Kokoro" },
+      ],
+    },
+    projects: [cristina],
+    team: {
+      "p-cristina": [
+        { userId: "me", roles: ["owner", "director"], displayName: "Santi" },
+        { userId: "manu", roles: ["actor"], displayName: "Manu" },
+      ],
+    },
+  });
+}
