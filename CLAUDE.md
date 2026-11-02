@@ -55,15 +55,15 @@ Si una decisión de código contradice estos docs, pregunta antes de seguir. Las
 
 ## Glosario español → inglés (nombres en código)
 
-Propuesto; `inquiry` y `production` por confirmar. Evitar `prompt` (se confunde con IA).
+Los nombres son genéricos a propósito: lo teatral vive en el contenido (taxonomía, catálogo, fichas), no en el esquema, para que el mismo modelo sirva a cualquier proceso creativo. Evitar `prompt` (se confunde con IA).
 
 | Español | Inglés | Español | Inglés |
 | --- | --- | --- | --- |
 | grupo | `group` | ejercicio | `exercise` |
 | miembro | `member` | referente | `reference` |
-| obra | `production` | material | `media` |
+| obra | `project` | material | `media` |
 | sesión | `session` | comentario | `comment` |
-| planteamiento | `inquiry` | acuerdos | `agreements` |
+| planteamiento | `approach` | acuerdos | `agreements` |
 | hallazgo | `finding` | @usuario del grupo | `handle` |
 | asistente | `attendee` | equipo | `team` |
 
