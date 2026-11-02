@@ -128,6 +128,16 @@ describe("invitations", () => {
   });
 });
 
+describe("my groups", () => {
+  it("lists only the groups of the caller", async () => {
+    const { call } = setup();
+    await call("tok-owner", "POST", "/groups", { name: "Uno" });
+    await call("tok-ana", "POST", "/groups", { name: "Dos" });
+    const mine = await (await call("tok-owner", "GET", "/me/groups")).json();
+    expect(mine.map((g: { name: string }) => g.name)).toEqual(["Uno"]);
+  });
+});
+
 describe("members", () => {
   it("lists members to members only", async () => {
     const { call } = setup();

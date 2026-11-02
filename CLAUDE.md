@@ -72,11 +72,22 @@ El modelo de datos de arriba se describe con los nombres en español; en la base
 
 ## Entornos
 
-- **Local:** Supabase CLI en Docker, bucket R2 `art-flux-dev`, `netlify dev`.
-- **Prueba:** proyecto Supabase `prueba`, bucket `art-flux-prueba`, previews por pull request.
-- **Real:** proyecto Supabase `real`, bucket `art-flux`, se despliega al fusionar en `main`.
+**Por ahora un solo proyecto de Supabase en la nube** (el de prueba), para no complicar. Se separan `prueba` y `real` cuando haya algo estable; como las migraciones son archivos, crear el segundo es enlazarlo y correr `pnpm migrar`. Mientras haya datos reales ahí: no reiniciar la base, no editar migraciones ya aplicadas y respaldar antes de cambios grandes.
 
-Variables de entorno en `.env.local` (nunca en el repo). Ver `.env.example`.
+Plan a futuro: Local (Supabase CLI en Docker, `netlify dev`), Prueba (previews por pull request) y Real (se despliega al fusionar en `main`), cada uno con su bucket R2.
+
+Variables de entorno en `.env` en la raíz (nunca en el repo). Ver `.env.example`. A la web solo llegan `SUPABASE_URL` y `SUPABASE_ANON_KEY` (lo define `apps/web/vite.config.ts`).
+
+## Cómo correrlo
+
+```
+pnpm install
+pnpm check:conexion   # verifica .env, base y llaves de Supabase
+pnpm migrar           # aplica supabase/migrations en orden (--dry para simular)
+pnpm dev:api          # API en :8787
+pnpm dev:web          # web en :5173 (/api se redirige a la API)
+pnpm test             # pruebas sin red; pnpm test:int usa el Supabase real
+```
 
 ## Foco actual: corte 1 · Registrar ya
 

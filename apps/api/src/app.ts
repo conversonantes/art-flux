@@ -11,6 +11,7 @@ import {
   createInvite,
   listInvites,
   listMembers,
+  listMyGroups,
   resolveInitialGroup,
   revokeInvite,
   type Authenticator,
@@ -64,6 +65,10 @@ export function createApp(options: AppOptions) {
     const result = await resolveInitialGroup(c.get("deps"), c.get("session").userId, last || undefined);
     return c.json(result);
   });
+
+  app.get("/me/groups", async (c) =>
+    c.json(await listMyGroups(c.get("deps"), c.get("session").userId)),
+  );
 
   app.post("/groups", async (c) => {
     const body = await jsonBody(c.req.raw);

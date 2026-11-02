@@ -7,7 +7,12 @@
   },
   "scripts": {
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "dev:api": "pnpm --filter @art-flux/api dev",
+    "dev:web": "pnpm --filter @art-flux/web dev",
+    "check:conexion": "node scripts/check-connection.mjs",
+    "migrar": "node scripts/migrate.mjs",
+    "test:int": "pnpm --filter @art-flux/adapters test:int && pnpm --filter @art-flux/api test:int"
   },
   "devDependencies": {
     "@types/node": "22",
