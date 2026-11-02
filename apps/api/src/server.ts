@@ -1,7 +1,9 @@
-// Local dev server: `pnpm --filter @art-flux/api dev`. Production runs the same app as a Netlify Function.
+// Composition root for local dev: `pnpm --filter @art-flux/api dev`.
+// Production runs the same app as a Netlify Function. This is where an identity/storage
+// provider is chosen; the routes in app.ts know nothing about which one.
 import { serve } from "@hono/node-server";
+import { supabaseWiring } from "@art-flux/adapters";
 import { createApp } from "./app";
-import { supabaseOptions } from "./supabase";
 
 try {
   process.loadEnvFile("../../.env");
@@ -16,6 +18,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 }
 
 const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: createApp(supabaseOptions({ SUPABASE_URL, SUPABASE_ANON_KEY })).fetch, port }, () => {
+const app = createApp(supabaseWiring({ SUPABASE_URL, SUPABASE_ANON_KEY }));
+serve({ fetch: app.fetch, port }, () => {
   console.log(`API escuchando en http://localhost:${port}`);
 });

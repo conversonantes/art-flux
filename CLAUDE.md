@@ -52,6 +52,7 @@ Si una decisión de código contradice estos docs, pregunta antes de seguir. Las
 - Interfaz celular primero; objetivos táctiles de 44 px o más.
 - Tokens de diseño: fondo `#F4F4F1`, hoja `#FFFFFF`, línea `#DADAD3`, grafito `#1E1E1C`, gris `#63635C`, resaltador `#F1DE45`, verde `#17725A`. Tipografías: Bricolage Grotesque (interfaz), Source Serif 4 (lectura), JetBrains Mono (rutas e identificadores).
 - Pruebas: Vitest para el `core` con adaptadores en memoria; pgTAP para RLS.
+- **Supabase solo en `packages/adapters` y en `supabase/migrations/*auth_bridge*`.** Nunca en `core` ni en las rutas de `apps/api` (lo vigila `packages/core/src/architecture.test.ts`). El `core` solo conoce un `userId`; las tablas apuntan a `profiles` y las políticas usan `current_user_id()`, no `auth.uid()`.
 
 ## Glosario español → inglés (nombres en código)
 

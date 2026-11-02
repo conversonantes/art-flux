@@ -14,11 +14,11 @@
     "@art-flux/adapters": "workspace:*",
     "@art-flux/core": "workspace:*",
     "@hono/node-server": "^1.13.0",
-    "@supabase/supabase-js": "^2.45.0",
     "hono": "^4.6.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.45.0",
     "tsx": "^4.19.0"
   }
 }

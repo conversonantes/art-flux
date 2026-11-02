@@ -11,7 +11,9 @@ function setup() {
   const deps = { groups, invites, clock, tokens: randomTokenGenerator };
   const sessions: Record<string, string> = { "tok-owner": "owner", "tok-ana": "ana", "tok-luis": "luis" };
   const app = createApp({
-    authenticate: async (t) => (sessions[t] ? { id: sessions[t]! } : null),
+    authenticator: {
+      authenticate: async (t) => (sessions[t] ? { userId: sessions[t]!, credential: t } : null),
+    },
     depsFor: () => deps,
   });
   const call = (token: string | null, method: string, path: string, body?: unknown) =>

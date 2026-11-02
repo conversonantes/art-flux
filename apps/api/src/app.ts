@@ -12,21 +12,19 @@ import {
   listInvites,
   resolveInitialGroup,
   revokeInvite,
+  type Authenticator,
   type InviteDeps,
+  type Session,
 } from "@art-flux/core";
 
-export interface AuthenticatedUser {
-  id: string;
-}
-
 export interface AppOptions {
-  /** Validates the bearer token. Returns null when it is not a valid session. */
-  authenticate(token: string): Promise<AuthenticatedUser | null>;
-  /** Repositories acting as this user (with Supabase: a client carrying their JWT, so RLS applies). */
-  depsFor(token: string): InviteDeps;
+  /** Validates the bearer credential and returns the session, or null if it is not valid. */
+  authenticator: Authenticator;
+  /** Repositories acting as this session's user. How they authorize is the adapter's business. */
+  depsFor(session: Session): InviteDeps;
 }
 
-type Env = { Variables: { user: AuthenticatedUser; deps: InviteDeps } };
+type Env = { Variables: { session: Session; deps: InviteDeps } };
 
 const uuid = z.uuid("Identificador no válido");
 
@@ -51,18 +49,18 @@ export function createApp(options: AppOptions) {
   app.use("*", async (c, next) => {
     if (c.req.path === "/health") return next();
     const header = c.req.header("Authorization") ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-    const user = token ? await options.authenticate(token) : null;
-    if (!user) return c.json({ error: "unauthorized", message: "Inicia sesión para continuar" }, 401);
-    c.set("user", user);
-    c.set("deps", options.depsFor(token));
+    const credential = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+    const session = credential ? await options.authenticator.authenticate(credential) : null;
+    if (!session) return c.json({ error: "unauthorized", message: "Inicia sesión para continuar" }, 401);
+    c.set("session", session);
+    c.set("deps", options.depsFor(session));
     return next();
   });
 
   // Where to send the user after login (HU-02): their group, a selector, or "create one".
   app.get("/me/start", async (c) => {
     const last = c.req.query("last");
-    const result = await resolveInitialGroup(c.get("deps"), c.get("user").id, last || undefined);
+    const result = await resolveInitialGroup(c.get("deps"), c.get("session").userId, last || undefined);
     return c.json(result);
   });
 
@@ -71,7 +69,7 @@ export function createApp(options: AppOptions) {
     const id = body.id === undefined ? randomUUID() : uuid.parse(body.id);
     const group = await createGroup(c.get("deps"), {
       id,
-      userId: c.get("user").id,
+      userId: c.get("session").userId,
       name: str(body.name) ?? "",
       ...(str(body.city) !== undefined ? { city: str(body.city)! } : {}),
     });
@@ -80,7 +78,7 @@ export function createApp(options: AppOptions) {
 
   app.get("/groups/:groupId/invites", async (c) => {
     const groupId = uuid.parse(c.req.param("groupId"));
-    return c.json(await listInvites(c.get("deps"), { groupId, userId: c.get("user").id }));
+    return c.json(await listInvites(c.get("deps"), { groupId, userId: c.get("session").userId }));
   });
 
   app.post("/groups/:groupId/invites", async (c) => {
@@ -91,7 +89,7 @@ export function createApp(options: AppOptions) {
     const invite = await createInvite(c.get("deps"), {
       id,
       groupId,
-      userId: c.get("user").id,
+      userId: c.get("session").userId,
       ...(label !== undefined ? { label } : {}),
     });
     return c.json(invite, 201);
@@ -99,7 +97,7 @@ export function createApp(options: AppOptions) {
 
   app.delete("/invites/:inviteId", async (c) => {
     const inviteId = uuid.parse(c.req.param("inviteId"));
-    await revokeInvite(c.get("deps"), { inviteId, userId: c.get("user").id });
+    await revokeInvite(c.get("deps"), { inviteId, userId: c.get("session").userId });
     return c.body(null, 204);
   });
 
@@ -107,7 +105,7 @@ export function createApp(options: AppOptions) {
     const body = await jsonBody(c.req.raw);
     const token = str(body.token)?.trim();
     if (!token) throw new HTTPException(400, { message: "Falta el enlace de invitación" });
-    const group = await acceptInvite(c.get("deps"), { token, userId: c.get("user").id });
+    const group = await acceptInvite(c.get("deps"), { token, userId: c.get("session").userId });
     return c.json(group);
   });
 
