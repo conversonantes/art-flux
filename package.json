@@ -2,12 +2,15 @@
   "name": "art-flux",
   "private": true,
   "packageManager": "pnpm@10.3.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
+    "pg": "^8.23.1",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
