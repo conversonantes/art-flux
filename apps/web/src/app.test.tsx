@@ -62,10 +62,48 @@ describe("HU-02 · grupo", () => {
       "g-otro": [{ userId: "me", role: "member" as const }],
     };
     open("/", fakeAuth(me), fakeApi({ groups: [conversonantes, otro], members }));
-    await userEvent.click(await screen.findByRole("link", { name: /otro grupo/i }));
+    await userEvent.click(await screen.findByRole("link", { name: /^otro grupo/i }));
     const selector = await screen.findByLabelText("Cambiar de grupo");
     await userEvent.selectOptions(selector, "conversonantes");
     expect(await screen.findByRole("heading", { name: "Conversonantes" })).toBeInTheDocument();
+  });
+});
+
+describe("HU-02 · crear otro grupo", () => {
+  const seed = () =>
+    fakeApi({
+      groups: [conversonantes],
+      members: { "g-conv": [{ userId: "me", role: "admin" as const, displayName: "Santi" }] },
+    });
+
+  it("offers it inside a group you already belong to", async () => {
+    const { history } = open("/conversonantes", fakeAuth(me), seed());
+    await userEvent.click(await screen.findByRole("link", { name: /crear otro grupo/i }));
+    expect(await screen.findByRole("heading", { name: "Abre tu grupo" })).toBeInTheDocument();
+    expect(history.location.pathname).toBe("/grupos/nuevo");
+  });
+
+  it("offers it in the header selector when you have several, and shows both groups after creating", async () => {
+    const seeded = seed();
+    open("/conversonantes", fakeAuth(me), seeded);
+    await userEvent.click(await screen.findByRole("link", { name: /crear otro grupo/i }));
+    await userEvent.type(await screen.findByLabelText(/nombre del grupo/i), "Segundo");
+    await userEvent.click(screen.getByRole("button", { name: /crear grupo/i }));
+    await screen.findByRole("heading", { name: "Invita a tu gente" });
+
+    await userEvent.click(screen.getByRole("link", { name: /ir al grupo/i }));
+    const selector = await screen.findByLabelText("Cambiar de grupo");
+    const options = Array.from((selector as HTMLSelectElement).options).map((o) => o.text);
+    expect(options).toEqual(["Conversonantes", "Segundo", "+ Crear otro grupo"]);
+
+    await userEvent.selectOptions(selector, "__nuevo__");
+    expect(await screen.findByRole("heading", { name: "Abre tu grupo" })).toBeInTheDocument();
+  });
+
+  it("is also on the group chooser", async () => {
+    const otro = { ...conversonantes, id: "g-otro", handle: "otro", name: "Otro grupo" };
+    open("/", fakeAuth(me), fakeApi({ groups: [conversonantes, otro] }));
+    expect(await screen.findByRole("link", { name: /crear otro grupo/i })).toBeInTheDocument();
   });
 });
 

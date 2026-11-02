@@ -5,6 +5,8 @@ import { lastGroup } from "../storage";
 import { Avatar, ErrorNote, Lead, LinkButton, Loading, Mono, Page, RoleTag, TextButton } from "../ui";
 import { useGroup } from "./useGroup";
 
+const NEW_GROUP = "__nuevo__";
+
 /** The group's home. For now: who is in it and how to invite; obras and sesiones come next. */
 export function GroupScreen() {
   const { handle = "" } = useParams({ strict: false }) as { handle?: string };
@@ -47,7 +49,11 @@ export function GroupScreen() {
             <select
               aria-label="Cambiar de grupo"
               value={group.handle}
-              onChange={(e) => void navigate({ to: "/$handle", params: { handle: e.target.value } })}
+              onChange={(e) =>
+                void (e.target.value === NEW_GROUP
+                  ? navigate({ to: "/grupos/nuevo" })
+                  : navigate({ to: "/$handle", params: { handle: e.target.value } }))
+              }
               className="w-full min-h-tactil rounded-2xl border border-linea bg-hoja px-3 text-lg font-bold"
             >
               {all.map((g) => (
@@ -55,6 +61,7 @@ export function GroupScreen() {
                   {g.name}
                 </option>
               ))}
+              <option value={NEW_GROUP}>+ Crear otro grupo</option>
             </select>
           ) : (
             <p className="truncate text-xl font-bold">{group.name}</p>
@@ -92,7 +99,10 @@ export function GroupScreen() {
         ))}
       </ul>
 
-      <div className="mt-auto pt-8 text-center">
+      <div className="mt-auto flex items-center justify-center gap-6 pt-8">
+        <Link to="/grupos/nuevo" className="inline-flex min-h-tactil items-center px-2 text-lg font-semibold text-verde">
+          Crear otro grupo
+        </Link>
         <TextButton onClick={() => void client.signOut()}>Salir</TextButton>
       </div>
     </Page>

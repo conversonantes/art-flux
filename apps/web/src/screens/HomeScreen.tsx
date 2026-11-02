@@ -118,6 +118,9 @@ function ChooseGroup({ groups }: { groups: { id: string; handle: string; name: s
           </Link>
         ))}
       </div>
+      <Link to="/grupos/nuevo" className="mt-6 inline-flex min-h-tactil items-center self-start px-2 text-lg font-semibold text-verde">
+        Crear otro grupo
+      </Link>
     </Page>
   );
 }
