@@ -80,7 +80,18 @@ afterAll(async () => {
     await admin.from("members").delete().eq("group_id", id);
     await admin.from("groups").delete().eq("id", id);
   }
-  for (const a of [owner, ana, luis, intruder]) if (a) await admin.auth.admin.deleteUser(a.id);
+  // Profiles have no FK to the login account (by design), so they are removed explicitly.
+  const actors = [owner, ana, luis, intruder].filter(Boolean);
+  await admin.from("profiles").delete().in("id", actors.map((a) => a.id));
+  for (const a of actors) await admin.auth.admin.deleteUser(a.id);
+});
+
+describe("profiles", () => {
+  it("creates a profile for every new login account", async () => {
+    const { data, error } = await admin.from("profiles").select("id").in("id", [owner.id, ana.id]);
+    expect(error).toBeNull();
+    expect(data?.map((p) => p.id).sort()).toEqual([owner.id, ana.id].sort());
+  });
 });
 
 describe("groups on Supabase", () => {

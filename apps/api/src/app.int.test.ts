@@ -53,7 +53,10 @@ afterAll(async () => {
     await admin.from("members").delete().eq("group_id", id);
     await admin.from("groups").delete().eq("id", id);
   }
-  for (const a of [owner, ana, luis]) if (a) await admin.auth.admin.deleteUser(a.id);
+  // Profiles have no FK to the login account (by design), so they are removed explicitly.
+  const actors = [owner, ana, luis].filter(Boolean);
+  await admin.from("profiles").delete().in("id", actors.map((a) => a.id));
+  for (const a of actors) await admin.auth.admin.deleteUser(a.id);
 });
 
 describe("API with real Supabase sessions", () => {
