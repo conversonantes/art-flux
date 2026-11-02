@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=390">
+<title>Uso externo · art-flux</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>body{margin:0}a{color:#17725A}a:hover{color:#1E1E1C}</style>
+</head>
+<body style="margin:0;background:#E9E9E4">
+<div style="width: 390px; min-height: 960px; box-sizing: border-box; background: #F4F4F1; font-family: 'Bricolage Grotesque', system-ui, sans-serif; color: #1E1E1C; display: flex; flex-direction: column">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px">
+    <a href="hu-21-ficha.html" aria-label="Cerrar" style="width: 44px; height: 44px; border-radius: 12px; border: 1px solid #DADAD3; background: #FFFFFF; color: #1E1E1C; display: flex; align-items: center; justify-content: center; box-sizing: border-box">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+    </a>
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #63635C">plásticos/usos/externo</span>
+  </div>
+
+  <div style="padding: 8px 20px 0; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <h1 style="margin: 0; font-weight: 800; font-size: 30px; letter-spacing: -0.02em">Uso de fuera</h1>
+      <p style="margin: 0; font-family: 'Source Serif 4', serif; font-size: 16px; line-height: 1.45; color: #3C3C38">Un libro, un taller, otro grupo: la ficha también aprende de lo que pasó afuera.</p>
+    </div>
+
+    <fieldset style="border: none; margin: 0; padding: 0">
+      <legend style="font-size: 15px; font-weight: 700; padding: 0 0 8px">Tipo</legend>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px; border-radius: 14px; background: #EAEAE5">
+        <button style="min-height: 44px; border-radius: 10px; border: none; background: transparent; font-family: 'Bricolage Grotesque', sans-serif; font-size: 15px; color: #1E1E1C">Libro</button>
+        <button aria-pressed="true" style="min-height: 44px; border-radius: 10px; border: none; background: #FFFFFF; box-shadow: 0 1px 3px #1E1E1C26; font-family: 'Bricolage Grotesque', sans-serif; font-size: 15px; font-weight: 700; color: #1E1E1C">Taller</button>
+        <button style="min-height: 44px; border-radius: 10px; border: none; background: transparent; font-family: 'Bricolage Grotesque', sans-serif; font-size: 15px; color: #1E1E1C">Otro grupo</button>
+      </div>
+    </fieldset>
+
+    <label style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 15px; font-weight: 700">Quién</span>
+      <input type="text" placeholder="Quién lo dirigió o lo usó" style="min-height: 52px; padding: 0 14px; border-radius: 14px; border: 2px solid #1E1E1C; background: #FFFFFF; font-family: 'Bricolage Grotesque', sans-serif; font-size: 16px; color: #1E1E1C; box-sizing: border-box">
+    </label>
+    <label style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 15px; font-weight: 700">Cuándo</span>
+      <input type="text" placeholder="Año o fecha aproximada" style="min-height: 52px; padding: 0 14px; border-radius: 14px; border: 1px solid #DADAD3; background: #FFFFFF; font-family: 'Bricolage Grotesque', sans-serif; font-size: 16px; color: #1E1E1C; box-sizing: border-box">
+    </label>
+    <label style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 15px; font-weight: 700">Contexto</span>
+      <textarea rows="2" placeholder="Dónde, con quién, para qué" style="padding: 12px 14px; border-radius: 14px; border: 1px solid #DADAD3; background: #FFFFFF; font-family: 'Source Serif 4', serif; font-size: 16px; line-height: 1.5; color: #1E1E1C; resize: none; box-sizing: border-box"></textarea>
+    </label>
+    <label style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 15px; font-weight: 700">Hallazgo</span>
+      <textarea rows="2" placeholder="Qué se encontró al usarlo" style="padding: 12px 14px; border-radius: 14px; border: 1px solid #DADAD3; background: #FFFFFF; font-family: 'Source Serif 4', serif; font-size: 16px; line-height: 1.5; color: #1E1E1C; resize: none; box-sizing: border-box"></textarea>
+    </label>
+    <label style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 15px; font-weight: 700">Enlace <span style="font-weight: 400; color: #63635C">· opcional</span></span>
+      <input type="url" placeholder="https://" style="min-height: 52px; padding: 0 14px; border-radius: 14px; border: 1px solid #DADAD3; background: #FFFFFF; font-family: 'JetBrains Mono', monospace; font-size: 15px; color: #1E1E1C; box-sizing: border-box">
+    </label>
+  </div>
+
+  <div style="flex-grow: 1; min-height: 24px"></div>
+  <div style="padding: 16px 20px 32px">
+    <a href="hu-21-ficha.html" style="min-height: 56px; border-radius: 16px; background: #1E1E1C; color: #FFFFFF; text-decoration: none; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center">Agregar a la ficha</a>
+  </div>
+</div>
+</body>
+</html>

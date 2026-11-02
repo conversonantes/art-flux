@@ -1,0 +1,51 @@
+/*
+ * art-flux · tokens de diseño · dirección B "Grafito y resaltador"
+ * Fuente: docs/diseno-visual.md (1 nov 2026).
+ * Importar una vez en apps/web/src/index.css, antes de @tailwind base.
+ * Tailwind lee estas variables a través de design/tailwind.preset.js.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..600;1,8..60,400&display=swap");
+
+:root {
+  /* Superficies */
+  --af-fondo: #f4f4f1;      /* fondo de la app */
+  --af-hoja: #ffffff;       /* tarjetas, hojas, formularios */
+  --af-linea: #dadad3;      /* bordes y divisores */
+
+  /* Texto */
+  --af-grafito: #1e1e1c;    /* texto principal */
+  --af-gris: #63635c;       /* texto secundario, metadatos */
+
+  /* Acentos */
+  --af-resaltador: #f1de45; /* hallazgos y estado activo */
+  --af-verde: #17725a;      /* enlaces, estado "realizada", permiso admin */
+
+  /* Categorías de ejercicios: siempre acompañadas de su nombre */
+  --af-cat-encuentro: #c2553f;   /* 1 Encuentro y grupo */
+  --af-cat-atencion: #2f7f8f;    /* 2 Atención y presencia */
+  --af-cat-cuerpo: #d47a22;      /* 3 Cuerpo y movimiento */
+  --af-cat-voz: #8653b3;         /* 4 Voz y palabra */
+  --af-cat-juego: #c99a12;       /* 5 Juego e improvisación */
+  --af-cat-analisis: #2e5fb0;    /* 6 Análisis del material */
+  --af-cat-personaje: #b34477;   /* 7 Personaje y relación */
+  --af-cat-composicion: #3f8545; /* 8 Composición y montaje */
+  --af-cat-reflexion: #6e655b;   /* 9 Reflexión y registro */
+
+  /* Tipografía */
+  --af-font-interfaz: "Bricolage Grotesque", system-ui, sans-serif; /* interfaz y títulos */
+  --af-font-lectura: "Source Serif 4", Georgia, serif;              /* objetivos, hallazgos, descripciones */
+  --af-font-mono: "JetBrains Mono", ui-monospace, monospace;        /* rutas, identificadores, metadatos */
+
+  /* Forma y ritmo */
+  --af-radio: 10px;
+  --af-radio-chico: 6px;
+  --af-tactil: 44px;        /* objetivo táctil mínimo */
+}
+
+/* Subrayado de resaltador para hallazgos: <mark class="af-hallazgo"> */
+.af-hallazgo {
+  background: linear-gradient(transparent 55%, var(--af-resaltador) 55%);
+  color: inherit;
+  padding: 0 0.1em;
+}
