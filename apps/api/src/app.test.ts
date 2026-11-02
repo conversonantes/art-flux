@@ -1,14 +1,20 @@
 // Offline route tests: fake auth + in-memory repos from the core.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { InMemoryGroupsRepo, InMemoryInvitesRepo, randomTokenGenerator } from "@art-flux/core";
+import {
+  InMemoryGroupsRepo,
+  InMemoryInvitesRepo,
+  InMemoryProjectsRepo,
+  randomTokenGenerator,
+} from "@art-flux/core";
 import { createApp } from "./app";
 
 function setup() {
   const groups = new InMemoryGroupsRepo();
   const invites = new InMemoryInvitesRepo(groups);
   const clock = { now: () => new Date() };
-  const deps = { groups, invites, clock, tokens: randomTokenGenerator };
+  const projects = new InMemoryProjectsRepo();
+  const deps = { groups, invites, projects, clock, tokens: randomTokenGenerator };
   const sessions: Record<string, string> = { "tok-owner": "owner", "tok-ana": "ana", "tok-luis": "luis" };
   const app = createApp({
     authenticator: {
@@ -147,6 +153,61 @@ describe("members", () => {
     expect(await res.json()).toEqual([{ userId: "owner", role: "admin" }]);
     expect((await call("tok-ana", "GET", `/groups/${group.id}/members`)).status).toBe(403);
     expect((await call("tok-owner", "GET", "/groups/nope/members")).status).toBe(400);
+  });
+});
+
+describe("projects and team", () => {
+  async function withGroup() {
+    const s = setup();
+    const group = await (await s.call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await s.call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await s.call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    return { ...s, group };
+  }
+
+  it("creates, reads, lists and edits a project", async () => {
+    const { call, group } = await withGroup();
+    const created = await call("tok-owner", "POST", `/groups/${group.id}/projects`, {
+      title: "Cristina",
+      status: "staging",
+      themes: ["#Memoria"],
+      visibilityAgreement: "Solo fotos",
+    });
+    expect(created.status).toBe(201);
+    const project = await created.json();
+    expect(project).toMatchObject({ slug: "cristina", status: "staging", themes: ["memoria"] });
+
+    const read = await call("tok-ana", "GET", `/groups/${group.id}/projects/cristina`);
+    expect((await read.json()).id).toBe(project.id);
+    const list = await (await call("tok-ana", "GET", `/groups/${group.id}/projects`)).json();
+    expect(list).toHaveLength(1);
+
+    const patched = await call("tok-owner", "PATCH", `/projects/${project.id}`, { title: "Cristina 2", status: "running" });
+    expect(await patched.json()).toMatchObject({ slug: "cristina", title: "Cristina 2", status: "running" });
+  });
+
+  it("answers 400 for bad input, 403 for members and 404 for outsiders and unknown slugs", async () => {
+    const { call, group } = await withGroup();
+    const url = `/groups/${group.id}/projects`;
+    expect((await call("tok-owner", "POST", url, { title: "  " })).status).toBe(400);
+    expect((await call("tok-owner", "POST", url, { title: "X", status: "volando" })).status).toBe(400);
+    expect((await call("tok-ana", "POST", url, { title: "Mia" })).status).toBe(403);
+    expect((await call("tok-luis", "GET", url)).status).toBe(404);
+    expect((await call("tok-owner", "GET", `${url}/no-existe`)).status).toBe(404);
+  });
+
+  it("manages the team with roles, for members to read and admins to write", async () => {
+    const { call, group } = await withGroup();
+    const project = await (await call("tok-owner", "POST", `/groups/${group.id}/projects`, { title: "Cristina" })).json();
+    const team = `/projects/${project.id}/team`;
+
+    const outsider = "00000000-0000-4000-8000-000000000001";
+    // An admin cannot put someone outside the group on the team.
+    expect((await call("tok-owner", "PUT", `${team}/${outsider}`, { roles: ["actor"] })).status).toBe(403);
+    expect((await call("tok-ana", "PUT", `${team}/${outsider}`, { roles: ["actor"] })).status).toBe(403); // a member cannot edit it at all
+    expect((await call("tok-owner", "PUT", `${team}/not-a-uuid`, { roles: [] })).status).toBe(400);
+    expect((await call("tok-owner", "GET", `/projects/not-a-uuid/team`)).status).toBe(400);
+    expect((await call("tok-luis", "GET", team)).status).toBe(404);
   });
 });
 

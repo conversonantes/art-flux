@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { randomTokenGenerator, type Authenticator, type InviteDeps, type Session } from "@art-flux/core";
+import { randomTokenGenerator, type AppDeps, type Authenticator, type Session } from "@art-flux/core";
 import { SupabaseGroupsRepo } from "./groups";
 import { SupabaseInvitesRepo } from "./invites";
+import { SupabaseProjectsRepo } from "./projects";
 
 export interface SupabaseEnv {
   SUPABASE_URL: string;
@@ -11,7 +12,7 @@ export interface SupabaseEnv {
 export interface Wiring {
   authenticator: Authenticator;
   /** Repositories acting as this session's user. */
-  depsFor(session: Session): InviteDeps;
+  depsFor(session: Session): AppDeps;
 }
 
 /**
@@ -40,6 +41,7 @@ export function supabaseWiring(env: SupabaseEnv): Wiring {
       return {
         groups: new SupabaseGroupsRepo(db),
         invites: new SupabaseInvitesRepo(db),
+        projects: new SupabaseProjectsRepo(db),
         clock,
         tokens: randomTokenGenerator,
       };

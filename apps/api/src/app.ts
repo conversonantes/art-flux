@@ -6,27 +6,37 @@ import {
   ForbiddenError,
   HandleTakenError,
   InviteInvalidError,
+  NotFoundError,
   acceptInvite,
   createGroup,
   createInvite,
+  createProject,
+  getProject,
   listInvites,
   listMembers,
   listMyGroups,
+  listProjects,
+  listTeam,
+  removeFromTeam,
   resolveInitialGroup,
   revokeInvite,
+  setTeamRoles,
+  updateProject,
+  type AppDeps,
   type Authenticator,
-  type InviteDeps,
+  type CreateProjectInput,
   type Session,
+  type UpdateProjectInput,
 } from "@art-flux/core";
 
 export interface AppOptions {
   /** Validates the bearer credential and returns the session, or null if it is not valid. */
   authenticator: Authenticator;
   /** Repositories acting as this session's user. How they authorize is the adapter's business. */
-  depsFor(session: Session): InviteDeps;
+  depsFor(session: Session): AppDeps;
 }
 
-type Env = { Variables: { session: Session; deps: InviteDeps } };
+type Env = { Variables: { session: Session; deps: AppDeps } };
 
 const uuid = z.uuid("Identificador no válido");
 
@@ -120,6 +130,63 @@ export function createApp(options: AppOptions) {
     return c.json(group);
   });
 
+  // Projects (HU-05) ----------------------------------------------------------------------
+  app.get("/groups/:groupId/projects", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    return c.json(await listProjects(c.get("deps"), { groupId, userId: c.get("session").userId }));
+  });
+
+  app.post("/groups/:groupId/projects", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    const { id: rawId, ...fields } = await jsonBody(c.req.raw);
+    const project = await createProject(c.get("deps"), {
+      id: rawId === undefined ? randomUUID() : uuid.parse(rawId),
+      groupId,
+      userId: c.get("session").userId,
+      title: str(fields.title) ?? "",
+      ...(fields as Omit<CreateProjectInput, "title">),
+    });
+    return c.json(project, 201);
+  });
+
+  app.get("/groups/:groupId/projects/:slug", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    const slug = c.req.param("slug");
+    return c.json(await getProject(c.get("deps"), { groupId, slug, userId: c.get("session").userId }));
+  });
+
+  app.patch("/projects/:projectId", async (c) => {
+    const projectId = uuid.parse(c.req.param("projectId"));
+    const changes = (await jsonBody(c.req.raw)) as UpdateProjectInput;
+    return c.json(await updateProject(c.get("deps"), { projectId, userId: c.get("session").userId, changes }));
+  });
+
+  // Team (HU-06) ---------------------------------------------------------------------------
+  app.get("/projects/:projectId/team", async (c) => {
+    const projectId = uuid.parse(c.req.param("projectId"));
+    return c.json(await listTeam(c.get("deps"), { projectId, userId: c.get("session").userId }));
+  });
+
+  app.put("/projects/:projectId/team/:memberId", async (c) => {
+    const projectId = uuid.parse(c.req.param("projectId"));
+    const memberId = uuid.parse(c.req.param("memberId"));
+    const body = await jsonBody(c.req.raw);
+    await setTeamRoles(c.get("deps"), {
+      projectId,
+      memberId,
+      userId: c.get("session").userId,
+      roles: body.roles as string[],
+    });
+    return c.body(null, 204);
+  });
+
+  app.delete("/projects/:projectId/team/:memberId", async (c) => {
+    const projectId = uuid.parse(c.req.param("projectId"));
+    const memberId = uuid.parse(c.req.param("memberId"));
+    await removeFromTeam(c.get("deps"), { projectId, memberId, userId: c.get("session").userId });
+    return c.body(null, 204);
+  });
+
   app.notFound((c) => c.json({ error: "not_found", message: "No existe esa ruta" }, 404));
 
   app.onError((err, c) => {
@@ -130,6 +197,7 @@ export function createApp(options: AppOptions) {
       const issue = (err as z.ZodError).issues[0];
       return c.json({ error: "validation", message: issue?.message ?? "Datos no válidos" }, 400);
     }
+    if (err instanceof NotFoundError) return c.json({ error: "not_found", message: err.message }, 404);
     if (err instanceof ForbiddenError) return c.json({ error: "forbidden", message: err.message }, 403);
     if (err instanceof InviteInvalidError) return c.json({ error: "invite_invalid", message: err.message }, 410);
     if (err instanceof HandleTakenError) return c.json({ error: "handle_taken", message: err.message }, 409);

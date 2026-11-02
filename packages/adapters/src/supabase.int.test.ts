@@ -7,17 +7,26 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ForbiddenError,
   InviteInvalidError,
+  NotFoundError,
   acceptInvite,
   createGroup,
   createInvite,
+  createProject,
+  getProject,
   listInvites,
+  listProjects,
+  listTeam,
   listMembers,
   randomTokenGenerator,
+  removeFromTeam,
   resolveInitialGroup,
   revokeInvite,
+  setTeamRoles,
+  updateProject,
 } from "@art-flux/core";
 import { SupabaseGroupsRepo } from "./groups";
 import { SupabaseInvitesRepo } from "./invites";
+import { SupabaseProjectsRepo } from "./projects";
 
 process.loadEnvFile("../../.env");
 const url = process.env.SUPABASE_URL!;
@@ -38,6 +47,7 @@ function depsFor(db: SupabaseClient, clk = clock) {
   return {
     groups: new SupabaseGroupsRepo(db),
     invites: new SupabaseInvitesRepo(db),
+    projects: new SupabaseProjectsRepo(db),
     clock: clk,
     tokens: randomTokenGenerator,
   };
@@ -82,6 +92,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const id of groupIds) {
+    const { data: owned } = await admin.from("projects").select("id").eq("group_id", id);
+    const projectIds = (owned ?? []).map((p) => p.id);
+    if (projectIds.length) await admin.from("project_team").delete().in("project_id", projectIds);
+    await admin.from("projects").delete().eq("group_id", id);
     await admin.from("invites").delete().eq("group_id", id);
     await admin.from("members").delete().eq("group_id", id);
     await admin.from("groups").delete().eq("id", id);
@@ -222,5 +236,86 @@ describe("single-use invitations on Supabase", () => {
     await expect(
       acceptInvite(ana.deps, { token: "x".repeat(43), userId: ana.id }),
     ).rejects.toBeInstanceOf(InviteInvalidError);
+  });
+});
+
+describe("projects and team on Supabase", () => {
+  async function groupWithAna() {
+    const g = await newGroup(`Obras ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    return g;
+  }
+
+  it("HU-05: admin creates and edits; members read; outsiders see nothing", async () => {
+    const g = await groupWithAna();
+    const p = await createProject(owner.deps, {
+      id: randomUUID(), groupId: g.id, userId: owner.id,
+      title: "Cristina", status: "staging", themes: ["#Memoria", "duelo"], visibilityAgreement: "Solo fotos",
+    });
+    expect(p).toMatchObject({ slug: "cristina", status: "staging", themes: ["memoria", "duelo"] });
+
+    // Same title again in the same group gets a numeric slug.
+    const again = await createProject(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id, title: "Cristina" });
+    expect(again.slug).toBe("cristina-2");
+
+    // The same title in another group keeps the plain slug.
+    const other = await newGroup(`Otras obras ${run}`);
+    const elsewhere = await createProject(owner.deps, { id: randomUUID(), groupId: other.id, userId: owner.id, title: "Cristina" });
+    expect(elsewhere.slug).toBe("cristina");
+
+    // Members read; they cannot create; outsiders do not even know the group exists.
+    expect((await getProject(ana.deps, { groupId: g.id, slug: "cristina", userId: ana.id })).id).toBe(p.id);
+    expect((await listProjects(ana.deps, { groupId: g.id, userId: ana.id })).map((x) => x.slug)).toEqual(["cristina-2", "cristina"]);
+    await expect(
+      createProject(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id, title: "Mia" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listProjects(intruder.deps, { groupId: g.id, userId: intruder.id })).rejects.toBeInstanceOf(NotFoundError);
+
+    // Editing keeps the slug; an empty agreement clears it.
+    const edited = await updateProject(owner.deps, {
+      projectId: p.id, userId: owner.id,
+      changes: { title: "Cristina (v2)", status: "running", visibilityAgreement: "" },
+    });
+    expect(edited).toMatchObject({ slug: "cristina", title: "Cristina (v2)", status: "running" });
+    expect(edited.visibilityAgreement).toBeUndefined();
+    await expect(
+      updateProject(ana.deps, { projectId: p.id, userId: ana.id, changes: { title: "x" } }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("HU-06: roles per person, names from profiles, only group members, admin-only writes", async () => {
+    const g = await groupWithAna();
+    const p = await createProject(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id, title: "Equipo" });
+
+    await setTeamRoles(owner.deps, { projectId: p.id, userId: owner.id, memberId: owner.id, roles: ["owner", "director"] });
+    await setTeamRoles(owner.deps, { projectId: p.id, userId: owner.id, memberId: ana.id, roles: ["actor"] });
+    await setTeamRoles(owner.deps, { projectId: p.id, userId: owner.id, memberId: ana.id, roles: ["actor", "technician"] }); // replaces
+
+    const team = await listTeam(ana.deps, { projectId: p.id, userId: ana.id });
+    expect(team.map((m) => [m.displayName, m.roles])).toEqual([
+      ["Prueba owner", ["owner", "director"]],
+      ["Prueba ana", ["actor", "technician"]],
+    ]);
+
+    // The core refuses people outside the group; the database refuses it too if the core is bypassed.
+    await expect(
+      setTeamRoles(owner.deps, { projectId: p.id, userId: owner.id, memberId: intruder.id, roles: ["actor"] }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    const direct = await db.owner!.from("project_team").insert({ project_id: p.id, user_id: intruder.id, roles: [] });
+    expect(direct.error).not.toBeNull();
+    const byMember = await db.ana!.from("project_team").insert({ project_id: p.id, user_id: luis.id, roles: [] });
+    expect(byMember.error).not.toBeNull();
+
+    // Members and outsiders cannot edit; outsiders cannot read.
+    await expect(
+      setTeamRoles(ana.deps, { projectId: p.id, userId: ana.id, memberId: ana.id, roles: ["director"] }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listTeam(intruder.deps, { projectId: p.id, userId: intruder.id })).rejects.toBeInstanceOf(NotFoundError);
+
+    // Removing from the team keeps the person in the group.
+    await removeFromTeam(owner.deps, { projectId: p.id, userId: owner.id, memberId: ana.id });
+    expect((await listTeam(owner.deps, { projectId: p.id, userId: owner.id })).map((m) => m.userId)).toEqual([owner.id]);
+    expect(await owner.deps.groups.getMemberRole(g.id, ana.id)).toBe("member");
   });
 });
