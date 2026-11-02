@@ -42,6 +42,12 @@ export interface InvitesRepo {
   findActiveByGroupAndEmail(groupId: string, email: string): Promise<Invite | null>;
   listActiveByGroup(groupId: string): Promise<Invite[]>;
   revoke(inviteId: string, at: Date): Promise<void>;
+  /**
+   * Final step of joining: adds the user as a member through this invite.
+   * Idempotent. Adapters backed by a database must re-check the invite there
+   * (the core already validated it, but the database is the security boundary).
+   */
+  accept(invite: Invite, userId: string): Promise<void>;
 }
 
 export interface TokenGenerator {

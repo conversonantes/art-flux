@@ -16,8 +16,6 @@ export interface GroupsRepo {
   getById(groupId: string): Promise<Group | null>;
   /** Role of the user in the group, or null if not a member. */
   getMemberRole(groupId: string, userId: string): Promise<MemberRole | null>;
-  /** Idempotent: adding an existing member changes nothing. */
-  addMember(member: Member): Promise<void>;
 }
 
 export interface Clock {

@@ -1,7 +1,11 @@
+import type { InMemoryGroupsRepo } from "../groups";
 import type { Invite, InvitesRepo } from "./invite";
 
 export class InMemoryInvitesRepo implements InvitesRepo {
   readonly invites: Invite[] = [];
+
+  /** `groups` is where accepted invitations add their members. */
+  constructor(private readonly groups: InMemoryGroupsRepo) {}
 
   async save(invite: Invite): Promise<void> {
     this.invites.push(invite);
@@ -28,5 +32,9 @@ export class InMemoryInvitesRepo implements InvitesRepo {
   async revoke(inviteId: string, at: Date): Promise<void> {
     const invite = this.invites.find((i) => i.id === inviteId);
     if (invite && !invite.revokedAt) invite.revokedAt = at;
+  }
+
+  async accept(invite: Invite, userId: string): Promise<void> {
+    await this.groups.addMember({ groupId: invite.groupId, userId, role: "member" });
   }
 }

@@ -79,12 +79,13 @@ export async function acceptInvite(
   const invite = await deps.invites.findByToken(input.token);
   if (!invite || invite.revokedAt) throw new InviteInvalidError();
 
-  const group = await deps.groups.getById(invite.groupId);
-  if (!group) throw new InviteInvalidError();
-
   const email = emailSchema.safeParse(input.userEmail);
   if (!email.success || email.data !== invite.email) throw new InviteEmailMismatchError();
 
-  await deps.groups.addMember({ groupId: group.id, userId: input.userId, role: "member" });
+  await deps.invites.accept(invite, input.userId);
+
+  // Read the group only now: before joining, RLS hides it from a non-member.
+  const group = await deps.groups.getById(invite.groupId);
+  if (!group) throw new InviteInvalidError();
   return group;
 }

@@ -17,7 +17,7 @@ const clock = { now: () => new Date("2026-11-02T10:00:00Z") };
 
 async function setup() {
   const groups = new InMemoryGroupsRepo();
-  const invites = new InMemoryInvitesRepo();
+  const invites = new InMemoryInvitesRepo(groups);
   let n = 0;
   const tokens = { next: () => `token-${++n}` };
   const deps = { groups, invites, clock, tokens };
