@@ -1,4 +1,4 @@
-import type { Group, Member, MemberRole } from "./group";
+import type { Group, GroupMember, Member, MemberRole } from "./group";
 
 /** Thrown by the repo when the @handle is already taken (also on races). */
 export class HandleTakenError extends Error {
@@ -16,6 +16,8 @@ export interface GroupsRepo {
   getById(groupId: string): Promise<Group | null>;
   /** Role of the user in the group, or null if not a member. */
   getMemberRole(groupId: string, userId: string): Promise<MemberRole | null>;
+  /** Members of the group, oldest first. */
+  listMembers(groupId: string): Promise<GroupMember[]>;
 }
 
 export interface Clock {

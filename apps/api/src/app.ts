@@ -10,6 +10,7 @@ import {
   createGroup,
   createInvite,
   listInvites,
+  listMembers,
   resolveInitialGroup,
   revokeInvite,
   type Authenticator,
@@ -74,6 +75,11 @@ export function createApp(options: AppOptions) {
       ...(str(body.city) !== undefined ? { city: str(body.city)! } : {}),
     });
     return c.json(group, 201);
+  });
+
+  app.get("/groups/:groupId/members", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    return c.json(await listMembers(c.get("deps"), { groupId, userId: c.get("session").userId }));
   });
 
   app.get("/groups/:groupId/invites", async (c) => {

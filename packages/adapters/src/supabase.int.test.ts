@@ -11,6 +11,7 @@ import {
   createGroup,
   createInvite,
   listInvites,
+  listMembers,
   randomTokenGenerator,
   resolveInitialGroup,
   revokeInvite,
@@ -47,7 +48,12 @@ const db: Record<string, SupabaseClient> = {};
 async function makeActor(label: string): Promise<Actor> {
   const email = `art-flux-test-${run}-${label}@example.com`;
   const password = randomUUID();
-  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: `Prueba ${label}` },
+  });
   if (error) throw error;
   const client = createClient(url, process.env.SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
   const signIn = await client.auth.signInWithPassword({ email, password });
@@ -146,6 +152,18 @@ describe("single-use invitations on Supabase", () => {
     const used = list.find((i) => i.id === forAna.id);
     expect(used).toMatchObject({ label: "para Ana", acceptedBy: ana.id });
     expect(list.find((i) => i.id === forLuis.id)?.acceptedBy).toBeUndefined();
+
+    // Co-members see each other's names (copied from Google by the profile trigger); outsiders do not.
+    const members = await listMembers(ana.deps, { groupId: g.id, userId: ana.id });
+    expect(members.map((m) => [m.role, m.displayName])).toEqual([
+      ["admin", "Prueba owner"],
+      ["member", "Prueba ana"],
+    ]);
+    const { data: seenByIntruder } = await db.intruder!.from("profiles").select("id").eq("id", ana.id);
+    expect(seenByIntruder).toEqual([]);
+    await expect(listMembers(intruder.deps, { groupId: g.id, userId: intruder.id })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
 
     // A plain member cannot manage invitations or read them.
     await expect(

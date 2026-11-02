@@ -1,5 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { HandleTakenError, type Group, type GroupsRepo, type Member, type MemberRole } from "@art-flux/core";
+import {
+  HandleTakenError,
+  type Group,
+  type GroupMember,
+  type GroupsRepo,
+  type Member,
+  type MemberRole,
+} from "@art-flux/core";
 
 interface GroupRow {
   id: string;
@@ -66,6 +73,27 @@ export class SupabaseGroupsRepo implements GroupsRepo {
       .maybeSingle();
     if (error) throw error;
     return data ? toGroup(data as GroupRow) : null;
+  }
+
+  async listMembers(groupId: string): Promise<GroupMember[]> {
+    // Names come from profiles; RLS only lets co-members read them.
+    const { data, error } = await this.db
+      .from("members")
+      .select("user_id, role, created_at, profiles(display_name)")
+      .eq("group_id", groupId)
+      .is("deleted_at", null)
+      .order("created_at");
+    if (error) throw error;
+    type Row = {
+      user_id: string;
+      role: MemberRole;
+      profiles: { display_name: string | null } | { display_name: string | null }[] | null;
+    };
+    return (data as unknown as Row[]).map((r) => {
+      const profile = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+      const displayName = profile?.display_name;
+      return { userId: r.user_id, role: r.role, ...(displayName ? { displayName } : {}) };
+    });
   }
 
   async getMemberRole(groupId: string, userId: string): Promise<MemberRole | null> {

@@ -23,6 +23,14 @@ export type Group = z.infer<typeof groupSchema>;
 
 export type MemberRole = "admin" | "member";
 
+/** A member as shown in lists: who they are and what they can do in the group. */
+export interface GroupMember {
+  userId: string;
+  role: MemberRole;
+  /** From their profile; may be missing if they never set or shared a name. */
+  displayName?: string;
+}
+
 export interface Member {
   groupId: string;
   userId: string;

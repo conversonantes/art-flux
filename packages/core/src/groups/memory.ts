@@ -1,9 +1,11 @@
-import type { Group, Member, MemberRole } from "./group";
+import type { Group, GroupMember, Member, MemberRole } from "./group";
 import { HandleTakenError, type GroupsRepo } from "./repo";
 
 export class InMemoryGroupsRepo implements GroupsRepo {
   readonly groups: Group[] = [];
   readonly members: Member[] = [];
+  /** Test helper: the names profiles would carry. */
+  readonly displayNames = new Map<string, string>();
 
   async handleExists(handle: string): Promise<boolean> {
     return this.groups.some((g) => g.handle === handle);
@@ -24,6 +26,15 @@ export class InMemoryGroupsRepo implements GroupsRepo {
 
   async getById(groupId: string): Promise<Group | null> {
     return this.groups.find((g) => g.id === groupId) ?? null;
+  }
+
+  async listMembers(groupId: string): Promise<GroupMember[]> {
+    return this.members
+      .filter((m) => m.groupId === groupId)
+      .map((m) => {
+        const displayName = this.displayNames.get(m.userId);
+        return { userId: m.userId, role: m.role, ...(displayName ? { displayName } : {}) };
+      });
   }
 
   async getMemberRole(groupId: string, userId: string): Promise<MemberRole | null> {

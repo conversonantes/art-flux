@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ForbiddenError } from "../errors";
 import {
   HandleTakenError,
   InMemoryGroupsRepo,
@@ -6,6 +7,7 @@ import {
   handleBase,
   handleCandidate,
   handleSchema,
+  listMembers,
   resolveInitialGroup,
   type Group,
   type Member,
@@ -115,5 +117,22 @@ describe("resolveInitialGroup", () => {
     expect(r.destination).toBe("choose");
     expect(await resolveInitialGroup(deps, "u1", "g2")).toEqual({ destination: "group", group: g2 });
     expect((await resolveInitialGroup(deps, "u1", "missing")).destination).toBe("choose");
+  });
+});
+
+describe("listMembers", () => {
+  it("lists members with their names, to members only", async () => {
+    const { groups, deps } = setup();
+    await createGroup(deps, { id: "g1", userId: "u1", name: "Uno" });
+    groups.displayNames.set("u1", "Santi");
+    await groups.members.push({ groupId: "g1", userId: "u2", role: "member" });
+
+    expect(await listMembers(deps, { groupId: "g1", userId: "u2" })).toEqual([
+      { userId: "u1", role: "admin", displayName: "Santi" },
+      { userId: "u2", role: "member" },
+    ]);
+    await expect(listMembers(deps, { groupId: "g1", userId: "stranger" })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
   });
 });

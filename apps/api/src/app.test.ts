@@ -128,6 +128,18 @@ describe("invitations", () => {
   });
 });
 
+describe("members", () => {
+  it("lists members to members only", async () => {
+    const { call } = setup();
+    const group = await (await call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const res = await call("tok-owner", "GET", `/groups/${group.id}/members`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([{ userId: "owner", role: "admin" }]);
+    expect((await call("tok-ana", "GET", `/groups/${group.id}/members`)).status).toBe(403);
+    expect((await call("tok-owner", "GET", "/groups/nope/members")).status).toBe(400);
+  });
+});
+
 describe("misc", () => {
   it("returns JSON 404 for unknown routes", async () => {
     const { call } = setup();
