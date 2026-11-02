@@ -1,1 +1,1 @@
-export * from "./grupos";
+export * from "./groups";

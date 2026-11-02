@@ -47,11 +47,27 @@ Si una decisión de código contradice estos docs, pregunta antes de seguir. Las
 
 ## Convenciones
 
-- **Nombres del dominio en español** (tablas, tipos, casos de uso): `sesion`, `planteamiento`, `hallazgo`, `marcarRealizada`. Código técnico genérico en inglés está bien (`useQuery`, `fetchJson`).
-- Textos de la interfaz en español de Colombia, tono cercano, sin tecnicismos.
+- **Código en inglés** (tablas, columnas, tipos, funciones, archivos, rutas de API): `session`, `inquiry`, `finding`, `markCompleted`. Los textos de interfaz y la documentación (`docs/`, historias) van en español; el glosario de abajo es el puente.
+- Textos de la interfaz en español de Colombia, tono cercano, sin tecnicismos (incluidos los mensajes de validación que ve la gente).
 - Interfaz celular primero; objetivos táctiles de 44 px o más.
 - Tokens de diseño: fondo `#F4F4F1`, hoja `#FFFFFF`, línea `#DADAD3`, grafito `#1E1E1C`, gris `#63635C`, resaltador `#F1DE45`, verde `#17725A`. Tipografías: Bricolage Grotesque (interfaz), Source Serif 4 (lectura), JetBrains Mono (rutas e identificadores).
 - Pruebas: Vitest para el `core` con adaptadores en memoria; pgTAP para RLS.
+
+## Glosario español → inglés (nombres en código)
+
+Propuesto; `inquiry` y `production` por confirmar. Evitar `prompt` (se confunde con IA).
+
+| Español | Inglés | Español | Inglés |
+| --- | --- | --- | --- |
+| grupo | `group` | ejercicio | `exercise` |
+| miembro | `member` | referente | `reference` |
+| obra | `production` | material | `media` |
+| sesión | `session` | comentario | `comment` |
+| planteamiento | `inquiry` | acuerdos | `agreements` |
+| hallazgo | `finding` | @usuario del grupo | `handle` |
+| asistente | `attendee` | equipo | `team` |
+
+El modelo de datos de arriba se describe con los nombres en español; en la base y el código llevan los nombres en inglés de esta tabla.
 
 ## Entornos
 
