@@ -1,6 +1,13 @@
 import { ForbiddenError } from "../errors";
-import type { Group, Clock, GroupsRepo } from "../groups";
-import { InviteInvalidError, type Invite, type InvitesRepo, type TokenGenerator } from "./invite";
+import type { Clock, Group, GroupsRepo } from "../groups";
+import {
+  InviteEmailMismatchError,
+  InviteInvalidError,
+  emailSchema,
+  type Invite,
+  type InvitesRepo,
+  type TokenGenerator,
+} from "./invite";
 
 export interface InviteDeps {
   groups: GroupsRepo;
@@ -13,20 +20,25 @@ async function requireAdmin(deps: InviteDeps, groupId: string, userId: string): 
   if ((await deps.groups.getMemberRole(groupId, userId)) !== "admin") throw new ForbiddenError();
 }
 
-/** Admin generates the group's link. Any previous active link is revoked: one at a time. */
+/**
+ * Admin invites one email. Re-inviting the same email revokes its previous active
+ * link, so each person has at most one live link per group.
+ */
 export async function createInvite(
   deps: InviteDeps,
-  input: { id: string; groupId: string; userId: string },
+  input: { id: string; groupId: string; userId: string; email: string },
 ): Promise<Invite> {
   await requireAdmin(deps, input.groupId, input.userId);
+  const email = emailSchema.parse(input.email);
   const now = deps.clock.now();
 
-  const previous = await deps.invites.findActiveByGroup(input.groupId);
+  const previous = await deps.invites.findActiveByGroupAndEmail(input.groupId, email);
   if (previous) await deps.invites.revoke(previous.id, now);
 
   const invite: Invite = {
     id: input.id,
     groupId: input.groupId,
+    email,
     token: deps.tokens.next(),
     createdBy: input.userId,
     createdAt: now,
@@ -35,26 +47,43 @@ export async function createInvite(
   return invite;
 }
 
-/** Admin cancels the active link. Idempotent. */
-export async function revokeInvite(
+/** Pending invitations of a group, for the admin's screen. */
+export async function listInvites(
   deps: InviteDeps,
   input: { groupId: string; userId: string },
-): Promise<void> {
+): Promise<Invite[]> {
   await requireAdmin(deps, input.groupId, input.userId);
-  const active = await deps.invites.findActiveByGroup(input.groupId);
-  if (active) await deps.invites.revoke(active.id, deps.clock.now());
+  return deps.invites.listActiveByGroup(input.groupId);
 }
 
-/** Whoever opens the link and is logged in becomes a member. Idempotent for existing members. */
+/** Admin cancels one invitation. Idempotent; people who already joined stay. */
+export async function revokeInvite(
+  deps: InviteDeps,
+  input: { inviteId: string; userId: string },
+): Promise<void> {
+  const invite = await deps.invites.findById(input.inviteId);
+  if (!invite) throw new ForbiddenError(); // do not reveal whether the id exists
+  await requireAdmin(deps, invite.groupId, input.userId);
+  await deps.invites.revoke(invite.id, deps.clock.now());
+}
+
+/**
+ * Whoever opens the link must be logged in with the invited email.
+ * `userEmail` is the verified email of the session, never user-typed input.
+ * Idempotent for existing members.
+ */
 export async function acceptInvite(
   deps: InviteDeps,
-  input: { token: string; userId: string },
+  input: { token: string; userId: string; userEmail: string },
 ): Promise<Group> {
   const invite = await deps.invites.findByToken(input.token);
   if (!invite || invite.revokedAt) throw new InviteInvalidError();
 
   const group = await deps.groups.getById(invite.groupId);
   if (!group) throw new InviteInvalidError();
+
+  const email = emailSchema.safeParse(input.userEmail);
+  if (!email.success || email.data !== invite.email) throw new InviteEmailMismatchError();
 
   await deps.groups.addMember({ groupId: group.id, userId: input.userId, role: "member" });
   return group;

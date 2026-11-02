@@ -1,6 +1,17 @@
+import { z } from "zod";
+
+/** Emails are compared case-insensitively; this is the one canonical form. */
+export const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email("Escribe un correo válido"));
+
 export interface Invite {
   id: string;
   groupId: string;
+  /** Normalized (trimmed, lowercase). Only this email can use the link. */
+  email: string;
   /** Secret that goes in the shared link. Unguessable. */
   token: string;
   createdBy: string;
@@ -16,10 +27,20 @@ export class InviteInvalidError extends Error {
   }
 }
 
+/** The link is valid but was issued to a different email than the one logged in. */
+export class InviteEmailMismatchError extends Error {
+  constructor() {
+    super("Esta invitación es para otro correo. Inicia sesión con el correo al que te invitaron.");
+    this.name = "InviteEmailMismatchError";
+  }
+}
+
 export interface InvitesRepo {
   save(invite: Invite): Promise<void>;
-  findActiveByGroup(groupId: string): Promise<Invite | null>;
+  findById(inviteId: string): Promise<Invite | null>;
   findByToken(token: string): Promise<Invite | null>;
+  findActiveByGroupAndEmail(groupId: string, email: string): Promise<Invite | null>;
+  listActiveByGroup(groupId: string): Promise<Invite[]>;
   revoke(inviteId: string, at: Date): Promise<void>;
 }
 

@@ -3,10 +3,12 @@ import {
   ForbiddenError,
   InMemoryGroupsRepo,
   InMemoryInvitesRepo,
+  InviteEmailMismatchError,
   InviteInvalidError,
   acceptInvite,
   createGroup,
   createInvite,
+  listInvites,
   randomTokenGenerator,
   revokeInvite,
 } from "../index";
@@ -23,107 +25,140 @@ async function setup() {
   return { groups, invites, deps };
 }
 
+const invite = (deps: Awaited<ReturnType<typeof setup>>["deps"], id: string, email = "ana@correo.com") =>
+  createInvite(deps, { id, groupId: "g1", userId: "admin1", email });
+
 describe("createInvite", () => {
-  it("lets an admin generate a link", async () => {
+  it("lets an admin invite an email, normalized", async () => {
     const { deps } = await setup();
-    const invite = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    expect(invite.token).toBe("token-1");
-    expect(invite.revokedAt).toBeUndefined();
+    const inv = await invite(deps, "i1", "  Ana@Correo.COM ");
+    expect(inv.email).toBe("ana@correo.com");
+    expect(inv.token).toBe("token-1");
+  });
+
+  it("rejects invalid emails", async () => {
+    const { deps } = await setup();
+    await expect(invite(deps, "i1", "no-es-correo")).rejects.toThrow();
   });
 
   it("rejects non-admins and outsiders", async () => {
     const { deps } = await setup();
-    const link = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    await acceptInvite(deps, { token: link.token, userId: "member1" });
-    await expect(
-      createInvite(deps, { id: "i2", groupId: "g1", userId: "member1" }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(
-      createInvite(deps, { id: "i3", groupId: "g1", userId: "stranger" }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+    const inv = await invite(deps, "i1");
+    await acceptInvite(deps, { token: inv.token, userId: "ana", userEmail: "ana@correo.com" });
+    for (const userId of ["ana", "stranger"]) {
+      await expect(
+        createInvite(deps, { id: "x", groupId: "g1", userId, email: "otro@correo.com" }),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+    }
   });
 
-  it("revokes the previous link when generating a new one", async () => {
+  it("keeps one live link per email: re-inviting revokes the old one", async () => {
     const { deps } = await setup();
-    const a = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    const b = await createInvite(deps, { id: "i2", groupId: "g1", userId: "admin1" });
-    await expect(acceptInvite(deps, { token: a.token, userId: "u2" })).rejects.toBeInstanceOf(
+    const a = await invite(deps, "i1");
+    const b = await invite(deps, "i2", "ANA@correo.com");
+    const args = { userId: "ana", userEmail: "ana@correo.com" };
+    await expect(acceptInvite(deps, { token: a.token, ...args })).rejects.toBeInstanceOf(
       InviteInvalidError,
     );
-    await expect(acceptInvite(deps, { token: b.token, userId: "u2" })).resolves.toMatchObject({
-      id: "g1",
-    });
+    await expect(acceptInvite(deps, { token: b.token, ...args })).resolves.toMatchObject({ id: "g1" });
+  });
+
+  it("allows several live invitations for different emails", async () => {
+    const { deps } = await setup();
+    const ana = await invite(deps, "i1", "ana@correo.com");
+    const luis = await invite(deps, "i2", "luis@correo.com");
+    await expect(
+      acceptInvite(deps, { token: ana.token, userId: "ana", userEmail: "ana@correo.com" }),
+    ).resolves.toBeDefined();
+    await expect(
+      acceptInvite(deps, { token: luis.token, userId: "luis", userEmail: "luis@correo.com" }),
+    ).resolves.toBeDefined();
   });
 });
 
 describe("acceptInvite", () => {
-  it("makes whoever opens the link a member", async () => {
+  it("makes the invited person a member", async () => {
     const { deps, groups } = await setup();
-    const { token } = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    const group = await acceptInvite(deps, { token, userId: "u2" });
+    const { token } = await invite(deps, "i1");
+    const group = await acceptInvite(deps, { token, userId: "ana", userEmail: "Ana@Correo.com" });
     expect(group.id).toBe("g1");
-    expect(await groups.getMemberRole("g1", "u2")).toBe("member");
+    expect(await groups.getMemberRole("g1", "ana")).toBe("member");
   });
 
-  it("lets several people use the same link", async () => {
+  it("refuses a different email even with the right token", async () => {
     const { deps, groups } = await setup();
-    const { token } = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    await acceptInvite(deps, { token, userId: "u2" });
-    await acceptInvite(deps, { token, userId: "u3" });
-    expect(await groups.getMemberRole("g1", "u3")).toBe("member");
+    const { token } = await invite(deps, "i1");
+    await expect(
+      acceptInvite(deps, { token, userId: "intruder", userEmail: "intruso@correo.com" }),
+    ).rejects.toBeInstanceOf(InviteEmailMismatchError);
+    expect(await groups.getMemberRole("g1", "intruder")).toBeNull();
   });
 
   it("is idempotent and never downgrades an admin", async () => {
     const { deps, groups } = await setup();
-    const { token } = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    await acceptInvite(deps, { token, userId: "admin1" });
-    await acceptInvite(deps, { token, userId: "u2" });
-    await acceptInvite(deps, { token, userId: "u2" });
+    const { token } = await invite(deps, "i1", "admin@correo.com");
+    await acceptInvite(deps, { token, userId: "admin1", userEmail: "admin@correo.com" });
     expect(await groups.getMemberRole("g1", "admin1")).toBe("admin");
-    expect(groups.members.filter((m) => m.userId === "u2")).toHaveLength(1);
+    const ana = await invite(deps, "i2");
+    const args = { token: ana.token, userId: "ana", userEmail: "ana@correo.com" };
+    await acceptInvite(deps, args);
+    await acceptInvite(deps, args);
+    expect(groups.members.filter((m) => m.userId === "ana")).toHaveLength(1);
   });
 
   it("rejects unknown tokens", async () => {
     const { deps } = await setup();
-    await expect(acceptInvite(deps, { token: "nope", userId: "u2" })).rejects.toBeInstanceOf(
-      InviteInvalidError,
-    );
+    await expect(
+      acceptInvite(deps, { token: "nope", userId: "u", userEmail: "ana@correo.com" }),
+    ).rejects.toBeInstanceOf(InviteInvalidError);
   });
 });
 
-describe("revokeInvite", () => {
-  it("cancels the link so it no longer admits anyone", async () => {
+describe("revokeInvite / listInvites", () => {
+  it("cancels one invitation and keeps the others", async () => {
     const { deps } = await setup();
-    const { token } = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    await revokeInvite(deps, { groupId: "g1", userId: "admin1" });
-    await expect(acceptInvite(deps, { token, userId: "u2" })).rejects.toBeInstanceOf(
-      InviteInvalidError,
-    );
+    const ana = await invite(deps, "i1", "ana@correo.com");
+    const luis = await invite(deps, "i2", "luis@correo.com");
+    await revokeInvite(deps, { inviteId: ana.id, userId: "admin1" });
+    await expect(
+      acceptInvite(deps, { token: ana.token, userId: "ana", userEmail: "ana@correo.com" }),
+    ).rejects.toBeInstanceOf(InviteInvalidError);
+    await expect(
+      acceptInvite(deps, { token: luis.token, userId: "luis", userEmail: "luis@correo.com" }),
+    ).resolves.toBeDefined();
   });
 
   it("keeps people who already joined", async () => {
     const { deps, groups } = await setup();
-    const { token } = await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    await acceptInvite(deps, { token, userId: "u2" });
-    await revokeInvite(deps, { groupId: "g1", userId: "admin1" });
-    expect(await groups.getMemberRole("g1", "u2")).toBe("member");
+    const inv = await invite(deps, "i1");
+    await acceptInvite(deps, { token: inv.token, userId: "ana", userEmail: "ana@correo.com" });
+    await revokeInvite(deps, { inviteId: inv.id, userId: "admin1" });
+    expect(await groups.getMemberRole("g1", "ana")).toBe("member");
   });
 
   it("is admin-only and idempotent", async () => {
     const { deps } = await setup();
-    await expect(revokeInvite(deps, { groupId: "g1", userId: "stranger" })).rejects.toBeInstanceOf(
-      ForbiddenError,
-    );
-    await revokeInvite(deps, { groupId: "g1", userId: "admin1" }); // no active link: fine
-    await revokeInvite(deps, { groupId: "g1", userId: "admin1" });
+    const inv = await invite(deps, "i1");
+    await expect(
+      revokeInvite(deps, { inviteId: inv.id, userId: "stranger" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(
+      revokeInvite(deps, { inviteId: "missing", userId: "admin1" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await revokeInvite(deps, { inviteId: inv.id, userId: "admin1" });
+    await revokeInvite(deps, { inviteId: inv.id, userId: "admin1" });
   });
 
-  it("allows generating a new link afterwards", async () => {
+  it("lists only live invitations, to admins", async () => {
     const { deps } = await setup();
-    await createInvite(deps, { id: "i1", groupId: "g1", userId: "admin1" });
-    await revokeInvite(deps, { groupId: "g1", userId: "admin1" });
-    const fresh = await createInvite(deps, { id: "i2", groupId: "g1", userId: "admin1" });
-    await expect(acceptInvite(deps, { token: fresh.token, userId: "u2" })).resolves.toBeDefined();
+    const ana = await invite(deps, "i1", "ana@correo.com");
+    await invite(deps, "i2", "luis@correo.com");
+    await revokeInvite(deps, { inviteId: ana.id, userId: "admin1" });
+    const list = await listInvites(deps, { groupId: "g1", userId: "admin1" });
+    expect(list.map((i) => i.email)).toEqual(["luis@correo.com"]);
+    await expect(listInvites(deps, { groupId: "g1", userId: "stranger" })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
   });
 });
 
