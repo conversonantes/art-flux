@@ -1,9 +1,9 @@
+import { z } from "zod";
 import { ForbiddenError } from "../errors";
 import type { Clock, Group, GroupsRepo } from "../groups";
 import {
-  InviteEmailMismatchError,
+  INVITE_TTL_DAYS,
   InviteInvalidError,
-  emailSchema,
   type Invite,
   type InvitesRepo,
   type TokenGenerator,
@@ -16,47 +16,49 @@ export interface InviteDeps {
   tokens: TokenGenerator;
 }
 
+const labelSchema = z
+  .string()
+  .trim()
+  .max(80)
+  .optional()
+  .transform((l) => (l ? l : undefined));
+
 async function requireAdmin(deps: InviteDeps, groupId: string, userId: string): Promise<void> {
   if ((await deps.groups.getMemberRole(groupId, userId)) !== "admin") throw new ForbiddenError();
 }
 
-/**
- * Admin invites one email. Re-inviting the same email revokes its previous active
- * link, so each person has at most one live link per group.
- */
+/** Admin creates a single-use link, valid for 7 days. One link per person to invite. */
 export async function createInvite(
   deps: InviteDeps,
-  input: { id: string; groupId: string; userId: string; email: string },
+  input: { id: string; groupId: string; userId: string; label?: string },
 ): Promise<Invite> {
   await requireAdmin(deps, input.groupId, input.userId);
-  const email = emailSchema.parse(input.email);
+  const label = labelSchema.parse(input.label);
   const now = deps.clock.now();
-
-  const previous = await deps.invites.findActiveByGroupAndEmail(input.groupId, email);
-  if (previous) await deps.invites.revoke(previous.id, now);
 
   const invite: Invite = {
     id: input.id,
     groupId: input.groupId,
-    email,
     token: deps.tokens.next(),
+    ...(label ? { label } : {}),
     createdBy: input.userId,
     createdAt: now,
+    expiresAt: new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
   };
   await deps.invites.save(invite);
   return invite;
 }
 
-/** Pending invitations of a group, for the admin's screen. */
+/** Links of a group for the admin's screen: pending, used (with who) and expired. */
 export async function listInvites(
   deps: InviteDeps,
   input: { groupId: string; userId: string },
 ): Promise<Invite[]> {
   await requireAdmin(deps, input.groupId, input.userId);
-  return deps.invites.listActiveByGroup(input.groupId);
+  return deps.invites.listByGroup(input.groupId);
 }
 
-/** Admin cancels one invitation. Idempotent; people who already joined stay. */
+/** Admin cancels one link. Idempotent; people who already joined stay. */
 export async function revokeInvite(
   deps: InviteDeps,
   input: { inviteId: string; userId: string },
@@ -68,21 +70,23 @@ export async function revokeInvite(
 }
 
 /**
- * Whoever opens the link must be logged in with the invited email.
- * `userEmail` is the verified email of the session, never user-typed input.
- * Idempotent for existing members.
+ * Whoever opens the link while logged in joins the group, and the link is spent.
+ * Idempotent for people already in the group (a reload, or the admin testing their own
+ * link): they get the group back and the link is not spent.
  */
 export async function acceptInvite(
   deps: InviteDeps,
-  input: { token: string; userId: string; userEmail: string },
+  input: { token: string; userId: string },
 ): Promise<Group> {
   const invite = await deps.invites.findByToken(input.token);
   if (!invite || invite.revokedAt) throw new InviteInvalidError();
 
-  const email = emailSchema.safeParse(input.userEmail);
-  if (!email.success || email.data !== invite.email) throw new InviteEmailMismatchError();
-
-  await deps.invites.accept(invite, input.userId);
+  const alreadyMember = (await deps.groups.getMemberRole(invite.groupId, input.userId)) !== null;
+  if (!alreadyMember) {
+    const now = deps.clock.now();
+    if (invite.acceptedAt || invite.expiresAt <= now) throw new InviteInvalidError();
+    await deps.invites.accept(invite, input.userId, now);
+  }
 
   // Read the group only now: before joining, RLS hides it from a non-member.
   const group = await deps.groups.getById(invite.groupId);

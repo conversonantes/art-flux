@@ -1,25 +1,23 @@
-import { z } from "zod";
-
-/** Emails are compared case-insensitively; this is the one canonical form. */
-export const emailSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .pipe(z.email("Escribe un correo válido"));
+/** A link works for 7 days after creation, unless spent or revoked first. */
+export const INVITE_TTL_DAYS = 7;
 
 export interface Invite {
   id: string;
   groupId: string;
-  /** Normalized (trimmed, lowercase). Only this email can use the link. */
-  email: string;
   /** Secret that goes in the shared link. Unguessable. */
   token: string;
+  /** Optional note for the admin ("para Ana"). Never shown to the invitee. */
+  label?: string;
   createdBy: string;
   createdAt: Date;
+  expiresAt: Date;
+  /** Set when someone spends the link; the link is then dead for everybody else. */
+  acceptedBy?: string;
+  acceptedAt?: Date;
   revokedAt?: Date;
 }
 
-/** The link was revoked, never existed, or its group is gone. */
+/** Unknown, revoked, expired or already used by someone else: all look the same on purpose. */
 export class InviteInvalidError extends Error {
   constructor() {
     super("Este enlace ya no sirve. Pídele a un admin uno nuevo.");
@@ -27,27 +25,19 @@ export class InviteInvalidError extends Error {
   }
 }
 
-/** The link is valid but was issued to a different email than the one logged in. */
-export class InviteEmailMismatchError extends Error {
-  constructor() {
-    super("Esta invitación es para otro correo. Inicia sesión con el correo al que te invitaron.");
-    this.name = "InviteEmailMismatchError";
-  }
-}
-
 export interface InvitesRepo {
   save(invite: Invite): Promise<void>;
   findById(inviteId: string): Promise<Invite | null>;
   findByToken(token: string): Promise<Invite | null>;
-  findActiveByGroupAndEmail(groupId: string, email: string): Promise<Invite | null>;
-  listActiveByGroup(groupId: string): Promise<Invite[]>;
+  /** Not revoked, newest first: pending, used and expired ones, so the admin sees who joined. */
+  listByGroup(groupId: string): Promise<Invite[]>;
   revoke(inviteId: string, at: Date): Promise<void>;
   /**
-   * Final step of joining: adds the user as a member through this invite.
-   * Idempotent. Adapters backed by a database must re-check the invite there
-   * (the core already validated it, but the database is the security boundary).
+   * Spends the link and adds the user as a member, atomically. Throws InviteInvalidError
+   * if someone else spent it first. Database-backed adapters must re-check everything
+   * there: the core validated already, but the database is the security boundary.
    */
-  accept(invite: Invite, userId: string): Promise<void>;
+  accept(invite: Invite, userId: string, at: Date): Promise<void>;
 }
 
 export interface TokenGenerator {
