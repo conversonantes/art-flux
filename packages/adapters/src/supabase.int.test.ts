@@ -1,11 +1,11 @@
 // Integration: core use cases + Supabase adapters against the real project, as real users.
-// Creates two throwaway auth users and removes everything it created. Run: pnpm --filter @art-flux/adapters test:int
+// Creates throwaway auth users and removes everything it created.
+// Run: pnpm --filter @art-flux/adapters test:int
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ForbiddenError,
-  InviteEmailMismatchError,
   InviteInvalidError,
   acceptInvite,
   createGroup,
@@ -33,31 +33,45 @@ interface Actor {
   deps: ReturnType<typeof depsFor>;
 }
 
-function depsFor(db: SupabaseClient) {
+function depsFor(db: SupabaseClient, clk = clock) {
   return {
     groups: new SupabaseGroupsRepo(db),
     invites: new SupabaseInvitesRepo(db),
-    clock,
+    clock: clk,
     tokens: randomTokenGenerator,
   };
 }
+
+const db: Record<string, SupabaseClient> = {};
 
 async function makeActor(label: string): Promise<Actor> {
   const email = `art-flux-test-${run}-${label}@example.com`;
   const password = randomUUID();
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   if (error) throw error;
-  const db = createClient(url, process.env.SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
-  const signIn = await db.auth.signInWithPassword({ email, password });
+  const client = createClient(url, process.env.SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
+  const signIn = await client.auth.signInWithPassword({ email, password });
   if (signIn.error) throw signIn.error;
-  return { id: data.user.id, email, deps: depsFor(db) };
+  db[label] = client;
+  return { id: data.user.id, email, deps: depsFor(client) };
 }
 
-let owner: Actor, ana: Actor, intruder: Actor;
+let owner: Actor, ana: Actor, luis: Actor, intruder: Actor;
 const groupIds: string[] = [];
 
+async function newGroup(name: string) {
+  const g = await createGroup(owner.deps, { id: randomUUID(), userId: owner.id, name });
+  groupIds.push(g.id);
+  return g;
+}
+
 beforeAll(async () => {
-  [owner, ana, intruder] = await Promise.all([makeActor("owner"), makeActor("ana"), makeActor("intruder")]);
+  [owner, ana, luis, intruder] = await Promise.all([
+    makeActor("owner"),
+    makeActor("ana"),
+    makeActor("luis"),
+    makeActor("intruder"),
+  ]);
 });
 
 afterAll(async () => {
@@ -66,7 +80,7 @@ afterAll(async () => {
     await admin.from("members").delete().eq("group_id", id);
     await admin.from("groups").delete().eq("id", id);
   }
-  for (const a of [owner, ana, intruder]) if (a) await admin.auth.admin.deleteUser(a.id);
+  for (const a of [owner, ana, luis, intruder]) if (a) await admin.auth.admin.deleteUser(a.id);
 });
 
 describe("groups on Supabase", () => {
@@ -78,20 +92,17 @@ describe("groups on Supabase", () => {
 
     expect(g2.handle).toBe(`${g1.handle}-2`);
     expect(await owner.deps.groups.getMemberRole(g1.id, owner.id)).toBe("admin");
-    const dest = await resolveInitialGroup(owner.deps, owner.id);
-    expect(dest.destination).toBe("choose");
+    expect((await resolveInitialGroup(owner.deps, owner.id)).destination).toBe("choose");
   });
 
   it("hides groups from people who are not members (RLS)", async () => {
-    const g = await createGroup(owner.deps, { id: randomUUID(), userId: owner.id, name: `Privado ${run}` });
-    groupIds.push(g.id);
+    const g = await newGroup(`Privado ${run}`);
     expect(await intruder.deps.groups.getById(g.id)).toBeNull();
     expect(await resolveInitialGroup(intruder.deps, intruder.id)).toEqual({ destination: "none" });
   });
 
   it("sees handles taken by groups it cannot read", async () => {
-    const g = await createGroup(owner.deps, { id: randomUUID(), userId: owner.id, name: `Visible ${run}` });
-    groupIds.push(g.id);
+    const g = await newGroup(`Visible ${run}`);
     expect(await intruder.deps.groups.handleExists(g.handle)).toBe(true);
     const mine = await createGroup(intruder.deps, { id: randomUUID(), userId: intruder.id, name: `Visible ${run}` });
     groupIds.push(mine.id);
@@ -99,55 +110,88 @@ describe("groups on Supabase", () => {
   });
 });
 
-describe("invitations on Supabase", () => {
-  it("full flow: invite by email, wrong email refused, right email joins, revoke", async () => {
-    const g = await createGroup(owner.deps, { id: randomUUID(), userId: owner.id, name: `Invitar ${run}` });
-    groupIds.push(g.id);
-
-    const inv = await createInvite(owner.deps, {
-      id: randomUUID(),
-      groupId: g.id,
-      userId: owner.id,
-      email: ana.email.toUpperCase(),
+describe("single-use invitations on Supabase", () => {
+  it("full flow: one link per person, spent on first use, reload is fine, revoke keeps members", async () => {
+    const g = await newGroup(`Invitar ${run}`);
+    const forAna = await createInvite(owner.deps, {
+      id: randomUUID(), groupId: g.id, userId: owner.id, label: "para Ana",
     });
-    expect(inv.email).toBe(ana.email);
-    expect(await listInvites(owner.deps, { groupId: g.id, userId: owner.id })).toHaveLength(1);
+    const forLuis = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
 
-    // Someone else holding the token cannot use it.
-    await expect(
-      acceptInvite(intruder.deps, { token: inv.token, userId: intruder.id, userEmail: intruder.email }),
-    ).rejects.toBeInstanceOf(InviteEmailMismatchError);
-    expect(await owner.deps.groups.getMemberRole(g.id, intruder.id)).toBeNull();
-
-    // Even if the caller lies about the email, the database checks the session's own email.
-    await expect(
-      acceptInvite(intruder.deps, { token: inv.token, userId: intruder.id, userEmail: ana.email }),
-    ).rejects.toBeInstanceOf(InviteEmailMismatchError);
-    expect(await owner.deps.groups.getMemberRole(g.id, intruder.id)).toBeNull();
-
-    // The invited person joins, and can then see the group.
-    const joined = await acceptInvite(ana.deps, { token: inv.token, userId: ana.id, userEmail: ana.email });
+    // Ana opens her link: she joins and can now see the group.
+    const joined = await acceptInvite(ana.deps, { token: forAna.token, userId: ana.id });
     expect(joined.id).toBe(g.id);
-    expect(await owner.deps.groups.getMemberRole(g.id, ana.id)).toBe("member");
-    await acceptInvite(ana.deps, { token: inv.token, userId: ana.id, userEmail: ana.email }); // idempotent
+    expect(await ana.deps.groups.getMemberRole(g.id, ana.id)).toBe("member");
 
-    // A member cannot manage invitations.
+    // Reloading the page is fine for Ana; the link is dead for anyone else.
+    await acceptInvite(ana.deps, { token: forAna.token, userId: ana.id });
     await expect(
-      createInvite(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id, email: "x@example.com" }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
-
-    // Revoking stops the link but keeps Ana in the group.
-    await revokeInvite(owner.deps, { inviteId: inv.id, userId: owner.id });
-    await expect(
-      acceptInvite(ana.deps, { token: inv.token, userId: ana.id, userEmail: ana.email }),
+      acceptInvite(intruder.deps, { token: forAna.token, userId: intruder.id }),
     ).rejects.toBeInstanceOf(InviteInvalidError);
+    expect(await owner.deps.groups.getMemberRole(g.id, intruder.id)).toBeNull();
+
+    // The admin sees who used each link.
+    const list = await listInvites(owner.deps, { groupId: g.id, userId: owner.id });
+    const used = list.find((i) => i.id === forAna.id);
+    expect(used).toMatchObject({ label: "para Ana", acceptedBy: ana.id });
+    expect(list.find((i) => i.id === forLuis.id)?.acceptedBy).toBeUndefined();
+
+    // A plain member cannot manage invitations or read them.
+    await expect(
+      createInvite(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await ana.deps.invites.listByGroup(g.id)).toEqual([]);
+
+    // Revoking an unused link kills it; revoking a used one keeps its member.
+    await revokeInvite(owner.deps, { inviteId: forLuis.id, userId: owner.id });
+    await expect(
+      acceptInvite(luis.deps, { token: forLuis.token, userId: luis.id }),
+    ).rejects.toBeInstanceOf(InviteInvalidError);
+    await revokeInvite(owner.deps, { inviteId: forAna.id, userId: owner.id });
     expect(await owner.deps.groups.getMemberRole(g.id, ana.id)).toBe("member");
-    expect(await listInvites(owner.deps, { groupId: g.id, userId: owner.id })).toHaveLength(0);
+  });
+
+  it("an admin opening their own link does not spend it", async () => {
+    const g = await newGroup(`Admin prueba ${run}`);
+    const inv = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(owner.deps, { token: inv.token, userId: owner.id });
+    expect(await owner.deps.groups.getMemberRole(g.id, owner.id)).toBe("admin");
+    await expect(acceptInvite(luis.deps, { token: inv.token, userId: luis.id })).resolves.toBeDefined();
+  });
+
+  it("two people opening the same link at once: only one gets in", async () => {
+    const g = await newGroup(`Carrera ${run}`);
+    const inv = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    const results = await Promise.allSettled([
+      acceptInvite(ana.deps, { token: inv.token, userId: ana.id }),
+      acceptInvite(luis.deps, { token: inv.token, userId: luis.id }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({
+      reason: expect.any(InviteInvalidError),
+    });
+    const { count } = await admin
+      .from("members").select("*", { count: "exact", head: true })
+      .eq("group_id", g.id).eq("role", "member");
+    expect(count).toBe(1);
+  });
+
+  it("an expired link (created 8 days ago) is invalid", async () => {
+    const g = await newGroup(`Caducado ${run}`);
+    const eightDaysAgo = { now: () => new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) };
+    const old = await createInvite(
+      { ...owner.deps, clock: eightDaysAgo },
+      { id: randomUUID(), groupId: g.id, userId: owner.id },
+    );
+    await expect(acceptInvite(luis.deps, { token: old.token, userId: luis.id })).rejects.toBeInstanceOf(
+      InviteInvalidError,
+    );
+    expect(await owner.deps.groups.getMemberRole(g.id, luis.id)).toBeNull();
   });
 
   it("an unknown token is invalid", async () => {
     await expect(
-      acceptInvite(ana.deps, { token: "x".repeat(43), userId: ana.id, userEmail: ana.email }),
+      acceptInvite(ana.deps, { token: "x".repeat(43), userId: ana.id }),
     ).rejects.toBeInstanceOf(InviteInvalidError);
   });
 });

@@ -1,25 +1,32 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { InviteEmailMismatchError, InviteInvalidError, type Invite, type InvitesRepo } from "@art-flux/core";
+import { InviteInvalidError, type Invite, type InvitesRepo } from "@art-flux/core";
 
 interface InviteRow {
   id: string;
   group_id: string;
-  email: string;
   token: string;
+  label: string | null;
   created_by: string;
   created_at: string;
+  expires_at: string;
+  accepted_by: string | null;
+  accepted_at: string | null;
   revoked_at: string | null;
 }
 
-const COLUMNS = "id, group_id, email, token, created_by, created_at, revoked_at";
+const COLUMNS =
+  "id, group_id, token, label, created_by, created_at, expires_at, accepted_by, accepted_at, revoked_at";
 
 const toInvite = (r: InviteRow): Invite => ({
   id: r.id,
   groupId: r.group_id,
-  email: r.email,
   token: r.token,
+  ...(r.label ? { label: r.label } : {}),
   createdBy: r.created_by,
   createdAt: new Date(r.created_at),
+  expiresAt: new Date(r.expires_at),
+  ...(r.accepted_by ? { acceptedBy: r.accepted_by } : {}),
+  ...(r.accepted_at ? { acceptedAt: new Date(r.accepted_at) } : {}),
   ...(r.revoked_at ? { revokedAt: new Date(r.revoked_at) } : {}),
 });
 
@@ -30,10 +37,11 @@ export class SupabaseInvitesRepo implements InvitesRepo {
     const { error } = await this.db.from("invites").insert({
       id: invite.id,
       group_id: invite.groupId,
-      email: invite.email,
       token: invite.token,
+      label: invite.label ?? null,
       created_by: invite.createdBy,
       created_at: invite.createdAt.toISOString(),
+      expires_at: invite.expiresAt.toISOString(),
     });
     if (error) throw error;
   }
@@ -52,25 +60,13 @@ export class SupabaseInvitesRepo implements InvitesRepo {
     return row ? toInvite(row) : null;
   }
 
-  async findActiveByGroupAndEmail(groupId: string, email: string): Promise<Invite | null> {
-    const { data, error } = await this.db
-      .from("invites")
-      .select(COLUMNS)
-      .eq("group_id", groupId)
-      .eq("email", email)
-      .is("revoked_at", null)
-      .maybeSingle();
-    if (error) throw error;
-    return data ? toInvite(data as InviteRow) : null;
-  }
-
-  async listActiveByGroup(groupId: string): Promise<Invite[]> {
+  async listByGroup(groupId: string): Promise<Invite[]> {
     const { data, error } = await this.db
       .from("invites")
       .select(COLUMNS)
       .eq("group_id", groupId)
       .is("revoked_at", null)
-      .order("created_at");
+      .order("created_at", { ascending: false });
     if (error) throw error;
     return (data as InviteRow[]).map(toInvite);
   }
@@ -84,12 +80,12 @@ export class SupabaseInvitesRepo implements InvitesRepo {
     if (error) throw error;
   }
 
-  async accept(invite: Invite, _userId: string): Promise<void> {
-    // The database re-validates token, revocation and the session's confirmed email.
+  async accept(invite: Invite, _userId: string, _at: Date): Promise<void> {
+    // The database spends the link atomically and re-validates token, revocation and expiry;
+    // the user comes from the session (auth.uid()) and the time from the database clock.
     const { error } = await this.db.rpc("accept_invite", { p_token: invite.token });
     if (error) {
       if (error.code === "P0002") throw new InviteInvalidError();
-      if (error.code === "P0003") throw new InviteEmailMismatchError();
       throw error;
     }
   }
