@@ -109,7 +109,7 @@ pnpm test             # pruebas sin red; pnpm test:int usa el Supabase real
 
 Objetivo: registrar las sesiones 1 y 2 de *Cristina*.
 
-Hecho: HU-01 a HU-09, HU-11, HU-12 y HU-13a (material con conexión), más la nota «cómo lo planteo» del responsable, el límite de 3 grupos por persona y la preparación del despliegue en Netlify (`netlify.toml`, `netlify/functions/api.ts`, `docs/despliegue.md`); falta que Santi lo publique (GitHub + Netlify).
+Hecho: HU-01 a HU-09, HU-11, HU-12 y HU-13a (material con conexión), más la nota «cómo lo planteo» del responsable, el límite de 3 grupos por persona y la preparación del despliegue en Netlify (`netlify.toml`, `apps/api/src/function.ts`, `docs/despliegue.md`); falta que Santi lo publique (GitHub + Netlify).
 
 Sigue, en este orden:
 

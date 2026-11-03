@@ -5,3 +5,5 @@ dist/
 !.env.example
 *.log
 .DS_Store
+# La función se genera en cada build (scripts/build-function.mjs)
+netlify/functions/

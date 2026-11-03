@@ -12,10 +12,12 @@
     "dev:web": "pnpm --filter @art-flux/web dev",
     "check:conexion": "node scripts/check-connection.mjs",
     "migrar": "node scripts/migrate.mjs",
-    "test:int": "pnpm --filter @art-flux/adapters test:int && pnpm --filter @art-flux/api test:int"
+    "test:int": "pnpm --filter @art-flux/adapters test:int && pnpm --filter @art-flux/api test:int",
+    "build:api": "node scripts/build-function.mjs"
   },
   "devDependencies": {
     "@types/node": "22",
+    "esbuild": "^0.28.2",
     "pg": "^8.23.1",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

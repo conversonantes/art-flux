@@ -2,7 +2,7 @@
 # Pasos y variables: docs/despliegue.md
 
 [build]
-  command = "pnpm --filter @art-flux/web build"
+  command = "pnpm --filter @art-flux/web build && pnpm build:api"
   publish = "apps/web/dist"
   functions = "netlify/functions"
 
@@ -12,11 +12,14 @@
   # diseño; RLS protege los datos). Sin esto, Netlify frena el build al encontrarlas en el paquete.
   SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"
 
-[functions]
-  node_bundler = "esbuild"
+# La API: todo /api/* es la función (que ya viene empaquetada en netlify/functions/api.mjs).
+# La ruta también está declarada en la propia función; esta regla es la red de seguridad.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
 
 # Cualquier dirección de la app (/grupo/obra/s02…) carga la misma página; el router decide.
-# La función de /api/* tiene su propia ruta (ver netlify/functions/api.ts) y no pasa por aquí.
 [[redirects]]
   from = "/*"
   to = "/index.html"

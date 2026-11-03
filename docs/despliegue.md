@@ -7,7 +7,7 @@ https://NOMBRE.netlify.app/            → la web (cualquier ruta carga index.ht
 https://NOMBRE.netlify.app/api/health  → la API ({"ok":true})
 ```
 
-Lo que hay en el repositorio ya está listo: [`netlify.toml`](../netlify.toml) (compilación, redirección de la web, cabeceras) y [`netlify/functions/api.ts`](../netlify/functions/api.ts) (la función, delgada; la lógica vive en `apps/api`).
+Lo que hay en el repositorio ya está listo: [`netlify.toml`](../netlify.toml) (compilación, redirecciones, cabeceras), [`apps/api/src/function.ts`](../apps/api/src/function.ts) (la función, delgada; la lógica vive en `apps/api`) y [`scripts/build-function.mjs`](../scripts/build-function.mjs), que en cada build empaqueta la API **en un solo archivo** (`netlify/functions/api.mjs`, que no se sube a git).
 
 ## Variables de entorno del sitio
 
@@ -52,7 +52,8 @@ Cada `git push` a `main` vuelve a desplegar solo. Las migraciones de la base **n
 | Síntoma | Qué mirar |
 | --- | --- |
 | El build falla con «secrets scanning» | Que `SECRETS_SCAN_OMIT_KEYS` siga en `netlify.toml`; y que no hayas puesto una llave secreta con el mismo valor en un archivo del repo |
-| `/api/health` devuelve la página de la web | Netlify no ve la función: revisa en *Functions* que aparezca `api`. Si no, se cambia a una redirección explícita `/api/* → /.netlify/functions/api/:splat` |
+| `/api/health` devuelve la página de la web | Netlify no ve la función: revisa en *Functions* que aparezca `api` y que el log del build diga «Función empaquetada» |
+| La función se cae con «Cannot find module 'hono'» (o cualquier otro módulo) | Netlify estaba empaquetando la función por su cuenta y no encuentra las dependencias del monorepo. Por eso el build la empaqueta con esbuild (`pnpm build:api`) y la prueba `function.bundle.test.ts` la corre sin `node_modules`. Revisa que el *Build command* del panel esté vacío y que se use el de `netlify.toml` |
 | La web carga pero todo da error | Faltan `SUPABASE_URL` / `SUPABASE_ANON_KEY` **antes** del build (la web las lee al compilar): agrégalas y vuelve a desplegar |
 | Entras con Google y vuelves a `localhost:3000` | La *Site URL* y *Redirect URLs* de Supabase (paso 5) |
 | «No se pudo subir el archivo» | El CORS del bucket no incluye la dirección del sitio (paso 5) |

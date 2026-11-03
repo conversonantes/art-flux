@@ -1,5 +1,5 @@
 // Composition root for local dev: `pnpm --filter @art-flux/api dev`.
-// Production runs the same app as a Netlify Function (netlify/functions/api.ts). Which login and
+// Production runs the same app as a Netlify Function (apps/api/src/function.ts). Which login and
 // storage providers are used is decided in wiring.ts; the routes in app.ts know nothing about it.
 import { serve } from "@hono/node-server";
 import { createApp } from "./app";
