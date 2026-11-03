@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import {
   ApiError,
   type Api,
+  type ApproachDto,
   type GroupDto,
   type InviteDto,
   type MemberDto,
@@ -45,6 +46,7 @@ export function fakeApi(
     projects?: ProjectDto[];
     team?: Record<string, TeamMemberDto[]>;
     sessions?: SessionDto[];
+    approaches?: ApproachDto[];
   } = {},
 ) {
   const state = {
@@ -55,8 +57,13 @@ export function fakeApi(
     projects: (seed.projects ?? []).map((p) => ({ ...p })),
     team: { ...(seed.team ?? {}) } as Record<string, TeamMemberDto[]>,
     sessions: (seed.sessions ?? []).map((s) => ({ ...s })),
+    approaches: (seed.approaches ?? []).map((a) => ({ ...a })),
+    /** Make the next reorder fail the way the server would (e.g. a 409). */
+    reorderError: null as ApiError | null,
   };
   let n = 0;
+  const approachesOf = (sessionId: string) =>
+    state.approaches.filter((a) => a.sessionId === sessionId).sort((a, b) => a.position - b.position);
 
   /** Sessions of one numbering scope: a project, or the group-level ones. */
   const inScope = (groupId: string, projectId: string | null) =>
@@ -171,6 +178,42 @@ export function fakeApi(
       Object.assign(session, input);
       return session;
     }),
+    approaches: vi.fn(async (sessionId) => approachesOf(sessionId)),
+    addApproach: vi.fn(async (sessionId, input) => {
+      const approach: ApproachDto = {
+        id: `a${++n}`,
+        sessionId,
+        position: Math.max(0, ...approachesOf(sessionId).map((a) => a.position)) + 1,
+        text: input.text,
+        ownerId: input.ownerId,
+        createdBy: "me",
+        createdAt: new Date().toISOString(),
+      };
+      state.approaches.push(approach);
+      return approach;
+    }),
+    updateApproach: vi.fn(async (approachId, input) => {
+      const approach = state.approaches.find((a) => a.id === approachId)!;
+      Object.assign(approach, input);
+      return approach;
+    }),
+    removeApproach: vi.fn(async (approachId) => {
+      state.approaches = state.approaches.filter((a) => a.id !== approachId);
+    }),
+    reorderApproaches: vi.fn(async (sessionId: string, orderedIds: string[]) => {
+      if (state.reorderError) {
+        const error = state.reorderError;
+        state.reorderError = null;
+        throw error;
+      }
+      const current = approachesOf(sessionId).map((a) => a.id);
+      const same = orderedIds.length === current.length && current.every((id) => orderedIds.includes(id));
+      if (!same) throw new ApiError(409, "conflict", "La lista cambió mientras la ordenabas. Recárgala e intenta de nuevo.");
+      orderedIds.forEach((id, index) => {
+        state.approaches.find((a) => a.id === id)!.position = index + 1;
+      });
+      return approachesOf(sessionId);
+    }),
     updateProject: vi.fn(async (projectId, input) => {
       const project = state.projects.find((p) => p.id === projectId)!;
       const { visibilityAgreement, ...rest } = input;
@@ -218,7 +261,10 @@ export const cristina: ProjectDto = {
 };
 
 /** A group with an admin (me), two members and the project "Cristina" with a small team. */
-export function seededProject(role: "admin" | "member" = "admin", extra: { sessions?: SessionDto[] } = {}) {
+export function seededProject(
+  role: "admin" | "member" = "admin",
+  extra: { sessions?: SessionDto[]; approaches?: ApproachDto[] } = {},
+) {
   return fakeApi({
     ...extra,
     groups: [conversonantes],
@@ -288,4 +334,11 @@ export const cristinaSessions: SessionDto[] = [
     createdBy: "me",
     createdAt: "2026-11-02T10:00:00Z",
   },
+];
+
+/** Three approaches of the group session "Explorar el texto" (s-2): Santi, Manu and Kokoro each bring one. */
+export const approachesOfS2: ApproachDto[] = [
+  { id: "ap-1", sessionId: "s-2", position: 1, text: "Calentamiento corporal", ownerId: "manu", createdBy: "me", createdAt: "2026-11-01T10:00:00Z" },
+  { id: "ap-2", sessionId: "s-2", position: 2, text: "Improvisación", ownerId: "kokoro", createdBy: "me", createdAt: "2026-11-01T10:01:00Z" },
+  { id: "ap-3", sessionId: "s-2", position: 3, text: "Análisis de acciones por personaje", ownerId: "me", createdBy: "me", createdAt: "2026-11-01T10:02:00Z" },
 ];

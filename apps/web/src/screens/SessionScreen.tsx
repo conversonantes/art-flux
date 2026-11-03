@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "../api/ApiProvider";
+import { useSession } from "../auth/AuthProvider";
+import { ApproachesSection } from "./ApproachesSection";
 import { formatSessionDate, isPastDate, sessionLabel } from "../sessionFormat";
 import { BackLink, ErrorNote, Loading, Mono, Page, Tag } from "../ui";
 import { useGroup } from "./useGroup";
@@ -11,7 +13,8 @@ import { useGroup } from "./useGroup";
  */
 export function SessionScreen({ handle, projectSlug, number }: { handle: string; projectSlug?: string; number: number }) {
   const api = useApi();
-  const { groups, group } = useGroup(handle);
+  const { groups, group, members } = useGroup(handle);
+  const { user } = useSession();
 
   const session = useQuery({
     queryKey: ["session", group?.id, projectSlug ?? null, number],
@@ -19,7 +22,7 @@ export function SessionScreen({ handle, projectSlug, number }: { handle: string;
     enabled: !!group,
   });
 
-  if (groups.isPending || (group && session.isPending)) return <Loading />;
+  if (groups.isPending || (group && (session.isPending || members.isPending))) return <Loading />;
   if (session.isError || !group || !session.data) {
     return (
       <Page className="justify-center">
@@ -62,10 +65,12 @@ export function SessionScreen({ handle, projectSlug, number }: { handle: string;
       <h1 className="mt-3 text-5xl leading-tight">{s.objective ?? "Sin objetivo todavía"}</h1>
       <p className="mt-3 font-mono text-base text-gris">{where}</p>
 
-      <section className="mt-8">
-        <h2 className="text-3xl font-bold">Planteamientos</h2>
-        <p className="mt-3 text-lg text-gris">Aquí van a ir los planteamientos de la sesión y quién trae cada uno.</p>
-      </section>
+      <ApproachesSection
+        sessionId={s.id}
+        members={members.data ?? []}
+        currentUserId={user.id}
+        editable={s.status === "planned"}
+      />
     </Page>
   );
 }

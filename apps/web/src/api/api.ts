@@ -51,6 +51,17 @@ export interface SessionInput {
 /** Which sessions to list: a project's, the group-level ones ("none"), or all. */
 export type SessionScopeDto = { project: string } | "none" | undefined;
 
+export interface ApproachDto {
+  id: string;
+  sessionId: string;
+  position: number;
+  text: string;
+  /** The group member who brings it ("¿quién lo trae?"). */
+  ownerId: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface ProjectDto {
   id: string;
   groupId: string;
@@ -112,6 +123,12 @@ export interface Api {
   session(groupId: string, number: number, projectSlug?: string): Promise<SessionDto>;
   createSession(groupId: string, input: SessionInput): Promise<SessionDto>;
   updateSession(sessionId: string, input: Partial<Omit<SessionInput, "projectId">>): Promise<SessionDto>;
+  approaches(sessionId: string): Promise<ApproachDto[]>;
+  addApproach(sessionId: string, input: { text: string; ownerId: string }): Promise<ApproachDto>;
+  updateApproach(approachId: string, input: { text?: string; ownerId?: string }): Promise<ApproachDto>;
+  removeApproach(approachId: string): Promise<void>;
+  /** Sends the full new order; answers with the list as the server now has it. */
+  reorderApproaches(sessionId: string, orderedIds: string[]): Promise<ApproachDto[]>;
   updateProject(projectId: string, input: Partial<ProjectInput>): Promise<ProjectDto>;
   team(projectId: string): Promise<TeamMemberDto[]>;
   setRoles(projectId: string, userId: string, roles: string[]): Promise<void>;
@@ -159,6 +176,12 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
       request("GET", `/groups/${groupId}/sessions/${number}${projectSlug ? `?project=${encodeURIComponent(projectSlug)}` : ""}`),
     createSession: (groupId, input) => request("POST", `/groups/${groupId}/sessions`, input),
     updateSession: (sessionId, input) => request("PATCH", `/sessions/${sessionId}`, input),
+    approaches: (sessionId) => request("GET", `/sessions/${sessionId}/approaches`),
+    addApproach: (sessionId, input) => request("POST", `/sessions/${sessionId}/approaches`, input),
+    updateApproach: (approachId, input) => request("PATCH", `/approaches/${approachId}`, input),
+    removeApproach: (approachId) => request("DELETE", `/approaches/${approachId}`),
+    reorderApproaches: (sessionId, orderedIds) =>
+      request("PUT", `/sessions/${sessionId}/approaches/order`, { ids: orderedIds }),
     updateProject: (projectId, input) => request("PATCH", `/projects/${projectId}`, input),
     team: (projectId) => request("GET", `/projects/${projectId}/team`),
     setRoles: (projectId, userId, roles) => request("PUT", `/projects/${projectId}/team/${userId}`, { roles }),
