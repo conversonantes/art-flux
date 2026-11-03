@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useApi } from "../api/ApiProvider";
 import { STATUS_LABEL } from "../projectLabels";
+import { formatSessionDate, sessionLabel, sessionSlug } from "../sessionFormat";
 import { useAuth, useSession } from "../auth/AuthProvider";
 import { lastGroup } from "../storage";
 import { Avatar, ErrorNote, Lead, LinkButton, Loading, Mono, Page, RoleTag, Tag, TextButton } from "../ui";
@@ -18,6 +19,11 @@ export function GroupScreen() {
   const { user } = useSession();
   const { groups, group, members, role } = useGroup(handle);
   const api = useApi();
+  const groupSessions = useQuery({
+    queryKey: ["sessions", group?.id, "none"],
+    queryFn: () => api.sessions(group!.id, "none"),
+    enabled: !!group,
+  });
   const projects = useQuery({
     queryKey: ["projects", group?.id],
     queryFn: () => api.projects(group!.id),
@@ -121,6 +127,42 @@ export function GroupScreen() {
                   </Mono>
                 </span>
                 <Tag>{STATUS_LABEL[p.status].toLowerCase()}</Tag>
+                <span aria-hidden className="text-2xl">›</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex items-center justify-between border-b border-linea pb-2">
+          <h2 className="text-xl font-bold">Sesiones del grupo</h2>
+          <Link
+            to="/$handle/sesiones/nueva"
+            params={{ handle: group.handle }}
+            className="inline-flex min-h-tactil items-center px-2 text-lg font-semibold text-verde"
+          >
+            + Nueva sesión
+          </Link>
+        </div>
+        {groupSessions.isError && <ErrorNote error={groupSessions.error} />}
+        {groupSessions.data?.length === 0 && (
+          <p className="py-4 text-lg text-gris">Las sesiones que aún no son de una obra aparecen aquí.</p>
+        )}
+        <ul>
+          {[...(groupSessions.data ?? [])].reverse().map((s) => (
+            <li key={s.id} className="border-b border-linea">
+              <Link
+                to="/$handle/$slug"
+                params={{ handle: group.handle, slug: sessionSlug(s.number) }}
+                className="flex items-center gap-4 py-4"
+              >
+                <span className="flex-1">
+                  <Mono className="block">
+                    {sessionLabel(s.number)} · {s.date ? formatSessionDate(s.date) : "fecha pendiente"}
+                  </Mono>
+                  <span className="block text-xl font-bold">{s.objective ?? "Sin objetivo todavía"}</span>
+                </span>
                 <span aria-hidden className="text-2xl">›</span>
               </Link>
             </li>

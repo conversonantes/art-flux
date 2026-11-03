@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { PROJECT_STATUSES, type ProjectInput } from "../api/api";
+import { PROJECT_STATUSES, type ProjectInput, type SessionDto } from "../api/api";
+import { formatSessionDate, sessionLabel } from "../sessionFormat";
 import { STATUS_LABEL } from "../projectLabels";
 import { Button, Chip, ErrorNote, Field } from "../ui";
 
@@ -63,6 +64,7 @@ export function ProjectForm({
   pendingLabel,
   pending,
   error,
+  origins,
   onSubmit,
 }: {
   initial: ProjectInput;
@@ -70,16 +72,21 @@ export function ProjectForm({
   pendingLabel: string;
   pending: boolean;
   error: unknown;
+  /** Group sessions that could become this project's origin (HU-05). Omit to hide the option. */
+  origins?: SessionDto[] | undefined;
   onSubmit: (input: ProjectInput) => void;
 }) {
   const [title, setTitle] = useState(initial.title);
   const [status, setStatus] = useState(initial.status);
   const [themes, setThemes] = useState(initial.themes);
   const [agreement, setAgreement] = useState(initial.visibilityAgreement);
+  const [originId, setOriginId] = useState<string | null>(null);
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (title.trim()) onSubmit({ title, status, themes, visibilityAgreement: agreement });
+    if (title.trim()) {
+      onSubmit({ title, status, themes, visibilityAgreement: agreement, ...(originId ? { originSessionId: originId } : {}) });
+    }
   }
 
   return (
@@ -99,6 +106,44 @@ export function ProjectForm({
         </fieldset>
 
         <ThemesInput value={themes} onChange={setThemes} />
+
+        {origins && origins.length > 0 && (
+          <fieldset>
+            <legend className="mb-2 text-lg font-semibold">
+              Nace de una sesión del grupo<span className="font-normal text-gris"> · opcional</span>
+            </legend>
+            <div role="radiogroup" aria-label="Sesión de origen" className="space-y-2">
+              {origins.map((s) => {
+                const on = originId === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setOriginId(on ? null : s.id)}
+                    className={`flex min-h-[56px] w-full items-center gap-4 rounded-2xl border bg-hoja p-3 text-left ${
+                      on ? "border-2 border-grafito" : "border-linea"
+                    }`}
+                  >
+                    <span aria-hidden className={`inline-flex size-7 shrink-0 items-center justify-center rounded-md border-2 border-grafito ${on ? "bg-grafito text-white" : "bg-hoja"}`}>
+                      {on ? "✓" : ""}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-lg font-semibold">
+                        {sessionLabel(s.number)} · {s.objective ?? "Sin objetivo"}
+                      </span>
+                      <span className="block font-mono text-sm text-gris">
+                        {s.date ? formatSessionDate(s.date) : "fecha pendiente"}
+                        {on ? " · se vuelve el origen" : ""}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
 
         <label className="block">
           <span className="mb-2 block text-lg font-semibold">Acuerdo de visibilidad</span>

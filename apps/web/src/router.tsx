@@ -13,7 +13,8 @@ import { InviteScreen } from "./screens/InviteScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { NewGroupScreen } from "./screens/NewGroupScreen";
 import { NewProjectScreen } from "./screens/NewProjectScreen";
-import { ProjectScreen } from "./screens/ProjectScreen";
+import { NewSessionScreen } from "./screens/NewSessionScreen";
+import { ProjectOrGroupSessionRoute, ProjectSessionRoute } from "./screens/SessionRoutes";
 import { RequireAuth } from "./screens/RequireAuth";
 import { TeamScreen } from "./screens/TeamScreen";
 
@@ -42,9 +43,13 @@ const routeTree = root.addChildren([
   protectedRoute("/$handle/invitar", InviteScreen),
   protectedRoute("/$handle/obras/nueva", NewProjectScreen),
   // Project slugs can never be "invitar", "obras", "nueva", "editar" or "equipo" (RESERVED_PROJECT_SLUGS).
-  protectedRoute("/$handle/$slug", ProjectScreen),
+  protectedRoute("/$handle/sesiones/nueva", NewSessionScreen),
+  // /<group>/s02 is a group session; any other single segment is a project (see SessionRoutes).
+  protectedRoute("/$handle/$slug", ProjectOrGroupSessionRoute),
+  protectedRoute("/$handle/$slug/sesiones/nueva", NewSessionScreen),
   protectedRoute("/$handle/$slug/editar", EditProjectScreen),
   protectedRoute("/$handle/$slug/equipo", TeamScreen),
+  protectedRoute("/$handle/$slug/$session", ProjectSessionRoute),
 ]);
 
 export function createAppRouter(history?: RouterHistory) {

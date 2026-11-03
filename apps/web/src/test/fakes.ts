@@ -6,6 +6,7 @@ import {
   type InviteDto,
   type MemberDto,
   type ProjectDto,
+  type SessionDto,
   type TeamMemberDto,
 } from "../api/api";
 import type { AuthClient, AuthSession } from "../auth/AuthClient";
@@ -43,6 +44,7 @@ export function fakeApi(
     invites?: InviteDto[];
     projects?: ProjectDto[];
     team?: Record<string, TeamMemberDto[]>;
+    sessions?: SessionDto[];
   } = {},
 ) {
   const state = {
@@ -52,8 +54,15 @@ export function fakeApi(
     // Copies: the API fake mutates projects, and the seeds are shared constants.
     projects: (seed.projects ?? []).map((p) => ({ ...p })),
     team: { ...(seed.team ?? {}) } as Record<string, TeamMemberDto[]>,
+    sessions: (seed.sessions ?? []).map((s) => ({ ...s })),
   };
   let n = 0;
+
+  /** Sessions of one numbering scope: a project, or the group-level ones. */
+  const inScope = (groupId: string, projectId: string | null) =>
+    state.sessions.filter((s) => s.groupId === groupId && (s.projectId ?? null) === projectId);
+  const nextNumber = (groupId: string, projectId: string | null) =>
+    Math.max(0, ...inScope(groupId, projectId).map((s) => s.number)) + 1;
 
   const api: Api = {
     start: vi.fn(async () => {
@@ -116,7 +125,51 @@ export function fakeApi(
         createdAt: new Date().toISOString(),
       };
       state.projects.push(project);
+      // Like the real API: an origin session joins the project and takes its next number.
+      const origin = state.sessions.find((s) => s.id === input.originSessionId);
+      if (origin) {
+        origin.number = nextNumber(groupId, project.id);
+        origin.projectId = project.id;
+        project.originSessionId = origin.id;
+      }
       return project;
+    }),
+    sessions: vi.fn(async (groupId, scope) => {
+      const list =
+        scope === undefined
+          ? state.sessions.filter((s) => s.groupId === groupId)
+          : inScope(groupId, scope === "none" ? null : scope.project);
+      return [...list].sort((a, b) => a.number - b.number);
+    }),
+    session: vi.fn(async (groupId, number, projectSlug) => {
+      const projectId = projectSlug
+        ? (state.projects.find((p) => p.groupId === groupId && p.slug === projectSlug)?.id ?? "missing")
+        : null;
+      const found = inScope(groupId, projectId).find((s) => s.number === number);
+      if (!found) throw new ApiError(404, "not_found", "No encontramos esa sesión");
+      return found;
+    }),
+    createSession: vi.fn(async (groupId, input) => {
+      const projectId = input.projectId ?? null;
+      const session: SessionDto = {
+        id: `s${++n}`,
+        groupId,
+        ...(projectId ? { projectId } : {}),
+        number: nextNumber(groupId, projectId),
+        ...(input.date ? { date: input.date } : {}),
+        ...(input.place ? { place: input.place } : {}),
+        ...(input.objective ? { objective: input.objective } : {}),
+        status: "planned",
+        createdBy: "me",
+        createdAt: new Date().toISOString(),
+      };
+      state.sessions.push(session);
+      return session;
+    }),
+    updateSession: vi.fn(async (sessionId, input) => {
+      const session = state.sessions.find((s) => s.id === sessionId)!;
+      Object.assign(session, input);
+      return session;
     }),
     updateProject: vi.fn(async (projectId, input) => {
       const project = state.projects.find((p) => p.id === projectId)!;
@@ -165,8 +218,9 @@ export const cristina: ProjectDto = {
 };
 
 /** A group with an admin (me), two members and the project "Cristina" with a small team. */
-export function seededProject(role: "admin" | "member" = "admin") {
+export function seededProject(role: "admin" | "member" = "admin", extra: { sessions?: SessionDto[] } = {}) {
   return fakeApi({
+    ...extra,
     groups: [conversonantes],
     members: {
       "g-conv": [
@@ -184,3 +238,54 @@ export function seededProject(role: "admin" | "member" = "admin") {
     },
   });
 }
+
+/** Two sessions of the group (no project yet), as before Cristina existed. */
+export const groupSessions: SessionDto[] = [
+  {
+    id: "s-1",
+    groupId: "g-conv",
+    number: 1,
+    date: "2026-10-20",
+    place: "Casa de Manu",
+    objective: "Reencuentro",
+    status: "planned",
+    createdBy: "me",
+    createdAt: "2026-10-20T10:00:00Z",
+  },
+  {
+    id: "s-2",
+    groupId: "g-conv",
+    number: 2,
+    objective: "Explorar el texto",
+    status: "planned",
+    createdBy: "manu",
+    createdAt: "2026-10-27T10:00:00Z",
+  },
+];
+
+/** Project sessions of "Cristina": S01 completed (origin) and S02 planned. */
+export const cristinaSessions: SessionDto[] = [
+  {
+    id: "c-1",
+    groupId: "g-conv",
+    projectId: "p-cristina",
+    number: 1,
+    date: "2026-10-20",
+    objective: "Reencuentro",
+    status: "completed",
+    createdBy: "me",
+    createdAt: "2026-10-20T10:00:00Z",
+  },
+  {
+    id: "c-2",
+    groupId: "g-conv",
+    projectId: "p-cristina",
+    number: 2,
+    date: "2026-11-10",
+    place: "U. Nacional",
+    objective: "Analizar el texto y seguir ahondando",
+    status: "planned",
+    createdBy: "me",
+    createdAt: "2026-11-02T10:00:00Z",
+  },
+];

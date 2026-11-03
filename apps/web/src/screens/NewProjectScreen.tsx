@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../api/ApiProvider";
 import { BackLink, Loading, Mono, Page } from "../ui";
 import { ProjectForm } from "./ProjectForm";
@@ -13,10 +13,17 @@ export function NewProjectScreen() {
   const queryClient = useQueryClient();
   const { groups, group, members, role } = useGroup(handle);
 
+  const origins = useQuery({
+    queryKey: ["sessions", group?.id, "none"],
+    queryFn: () => api.sessions(group!.id, "none"),
+    enabled: !!group,
+  });
+
   const create = useMutation({
     mutationFn: (input: Parameters<typeof api.createProject>[1]) => api.createProject(group!.id, input),
     onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["projects", group?.id] });
+      await queryClient.invalidateQueries({ queryKey: ["sessions", group?.id] });
       await navigate({ to: "/$handle/$slug", params: { handle, slug: project.slug } });
     },
   });
@@ -46,6 +53,7 @@ export function NewProjectScreen() {
         pendingLabel="Creando…"
         pending={create.isPending}
         error={create.error}
+        origins={origins.data}
         onSubmit={(input) => create.mutate(input)}
       />
     </Page>

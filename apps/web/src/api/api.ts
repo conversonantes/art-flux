@@ -27,6 +27,30 @@ export interface InviteDto {
 export const PROJECT_STATUSES = ["searching", "staging", "running", "archived"] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
+export interface SessionDto {
+  id: string;
+  groupId: string;
+  projectId?: string;
+  number: number;
+  /** "YYYY-MM-DD"; absent when the date is still pending. */
+  date?: string;
+  place?: string;
+  objective?: string;
+  status: "planned" | "completed";
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface SessionInput {
+  projectId?: string;
+  date?: string | null;
+  place?: string;
+  objective?: string;
+}
+
+/** Which sessions to list: a project's, the group-level ones ("none"), or all. */
+export type SessionScopeDto = { project: string } | "none" | undefined;
+
 export interface ProjectDto {
   id: string;
   groupId: string;
@@ -35,6 +59,7 @@ export interface ProjectDto {
   status: ProjectStatus;
   themes: string[];
   visibilityAgreement?: string;
+  originSessionId?: string;
   createdAt: string;
 }
 
@@ -43,6 +68,8 @@ export interface ProjectInput {
   status: ProjectStatus;
   themes: string[];
   visibilityAgreement: string;
+  /** A group session this project is born from (HU-05). */
+  originSessionId?: string;
 }
 
 export interface TeamMemberDto {
@@ -80,6 +107,11 @@ export interface Api {
   projects(groupId: string): Promise<ProjectDto[]>;
   project(groupId: string, slug: string): Promise<ProjectDto>;
   createProject(groupId: string, input: ProjectInput): Promise<ProjectDto>;
+  sessions(groupId: string, scope?: SessionScopeDto): Promise<SessionDto[]>;
+  /** A session by its address; `projectSlug` omitted means a group-level session. */
+  session(groupId: string, number: number, projectSlug?: string): Promise<SessionDto>;
+  createSession(groupId: string, input: SessionInput): Promise<SessionDto>;
+  updateSession(sessionId: string, input: Partial<Omit<SessionInput, "projectId">>): Promise<SessionDto>;
   updateProject(projectId: string, input: Partial<ProjectInput>): Promise<ProjectDto>;
   team(projectId: string): Promise<TeamMemberDto[]>;
   setRoles(projectId: string, userId: string, roles: string[]): Promise<void>;
@@ -119,6 +151,14 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
     projects: (groupId) => request("GET", `/groups/${groupId}/projects`),
     project: (groupId, slug) => request("GET", `/groups/${groupId}/projects/${encodeURIComponent(slug)}`),
     createProject: (groupId, input) => request("POST", `/groups/${groupId}/projects`, input),
+    sessions: (groupId, scope) => {
+      const filter = scope === undefined ? "" : `?project=${scope === "none" ? "none" : scope.project}`;
+      return request("GET", `/groups/${groupId}/sessions${filter}`);
+    },
+    session: (groupId, number, projectSlug) =>
+      request("GET", `/groups/${groupId}/sessions/${number}${projectSlug ? `?project=${encodeURIComponent(projectSlug)}` : ""}`),
+    createSession: (groupId, input) => request("POST", `/groups/${groupId}/sessions`, input),
+    updateSession: (sessionId, input) => request("PATCH", `/sessions/${sessionId}`, input),
     updateProject: (projectId, input) => request("PATCH", `/projects/${projectId}`, input),
     team: (projectId) => request("GET", `/projects/${projectId}/team`),
     setRoles: (projectId, userId, roles) => request("PUT", `/projects/${projectId}/team/${userId}`, { roles }),

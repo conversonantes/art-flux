@@ -1,4 +1,7 @@
 import { Link, useParams } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useApi } from "../api/ApiProvider";
+import { formatSessionDate, sessionLabel, sessionSlug } from "../sessionFormat";
 import { Avatar, BackLink, ErrorNote, Loading, Mono, Page, Tag } from "../ui";
 import { STATUS_LABEL, rolesText } from "../projectLabels";
 import { useProject } from "./useProject";
@@ -7,6 +10,12 @@ import { useProject } from "./useProject";
 export function ProjectScreen() {
   const { handle = "", slug = "" } = useParams({ strict: false }) as { handle?: string; slug?: string };
   const { groups, group, members, role, project, team } = useProject(handle, slug);
+  const api = useApi();
+  const sessions = useQuery({
+    queryKey: ["sessions", group?.id, project.data?.id],
+    queryFn: () => api.sessions(group!.id, { project: project.data!.id }),
+    enabled: !!group && !!project.data,
+  });
 
   if (groups.isPending || (group && project.isPending)) return <Loading />;
   if (project.isError || !group || !project.data) {
@@ -93,8 +102,49 @@ export function ProjectScreen() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-3xl font-bold">Sesiones</h2>
-        <p className="mt-3 text-lg text-gris">Pronto podrás planear y registrar aquí las sesiones de la obra.</p>
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold">Sesiones</h2>
+          <Link
+            to="/$handle/$slug/sesiones/nueva"
+            params={{ handle, slug }}
+            className="inline-flex min-h-tactil items-center px-2 text-lg font-semibold text-verde"
+          >
+            + Nueva
+          </Link>
+        </div>
+        {sessions.isError && <ErrorNote error={sessions.error} />}
+        {sessions.data?.length === 0 && (
+          <p className="mt-3 text-lg text-gris">Todavía no hay sesiones. Crea la primera para empezar a planear.</p>
+        )}
+        <ol className="mt-4">
+          {[...(sessions.data ?? [])].reverse().map((s) => (
+            <li key={s.id} className="relative flex gap-4 pb-6 last:pb-0">
+              <span
+                aria-hidden
+                className={`z-10 mt-1 size-6 shrink-0 rounded-full border-2 border-grafito ${
+                  s.status === "completed" ? "bg-grafito" : "border-dashed bg-fondo"
+                }`}
+              />
+              <Link
+                to="/$handle/$slug/$session"
+                params={{ handle, slug, session: sessionSlug(s.number) }}
+                className="min-w-0 flex-1"
+              >
+                <Mono className="block">
+                  {sessionLabel(s.number)} · {s.status === "planned" ? "planeada" : "realizada"} ·{" "}
+                  {s.date ? formatSessionDate(s.date) : "fecha pendiente"}
+                  {s.place ? ` · ${s.place}` : ""}
+                </Mono>
+                <span className="mt-1 block text-xl font-bold">{s.objective ?? "Sin objetivo todavía"}</span>
+                {s.id === p.originSessionId && (
+                  <span className="mt-2 inline-block rounded-af-chico bg-resaltador px-2 py-0.5 font-mono text-sm">
+                    origen de la obra
+                  </span>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section className="mt-8">
