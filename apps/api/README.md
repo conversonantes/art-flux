@@ -5,7 +5,9 @@ API en Hono: una capa delgada entre la web y el `core`. Rutas y permisos en [`do
 ## Estructura
 
 - `src/app.ts` — `createApp({ authenticator, depsFor })`: valida la credencial, arma los repositorios de esa persona, y expone las rutas. **No conoce ningún proveedor**; recibe todo por parámetro.
-- `src/server.ts` — raíz de composición para desarrollo: elige Supabase (`supabaseWiring`) y arranca el servidor. En producción, la misma `app` corre como Netlify Function.
+- `src/wiring.ts` — elige Supabase y R2 según las variables de entorno (`wiringFromEnv`); lo usan el servidor local y la función de Netlify.
+- `src/server.ts` — raíz de composición para desarrollo: carga el `.env`, usa `wiringFromEnv` y arranca el servidor.
+- `src/netlify.ts` — lo que necesita la función de Netlify: quitar el prefijo `/api` de la ruta. La función misma está en `netlify/functions/api.ts` (raíz del repo); pasos de despliegue en [`docs/despliegue.md`](../../docs/despliegue.md).
 - `src/app.test.ts` — pruebas de las rutas, sin red, con repositorios en memoria del `core`.
 - `src/app.int.test.ts` — la API con sesiones reales de Supabase.
 

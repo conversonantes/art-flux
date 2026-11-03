@@ -14,6 +14,7 @@ Cada archivo explica **una** decisión: qué se decidió, por qué y qué consec
 | [0008](0008-nota-del-responsable.md) | Nota «cómo lo planteo»: la lee el grupo, la escribe el responsable | Vigente |
 | [0009](0009-hallazgos-por-fragmentos.md) | Hallazgos por fragmentos con autor, marcas simples, edita solo el autor | Vigente |
 | [0010](0010-material-en-r2.md) | Material: archivos en R2 con subida directa y firmada; siempre dentro de una obra | Vigente |
+| [0011](0011-despliegue-netlify.md) | Despliegue: la web estática y la API como una sola función en Netlify; tope de 3 grupos | Vigente |
 
 ## Cómo agregar una
 

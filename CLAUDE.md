@@ -107,17 +107,16 @@ pnpm test             # pruebas sin red; pnpm test:int usa el Supabase real
 
 ## Foco actual: corte 1 · Registrar ya
 
-Objetivo: registrar las sesiones 1 y 2 de *Cristina*. Orden sugerido:
+Objetivo: registrar las sesiones 1 y 2 de *Cristina*.
 
-Hecho: HU-01 a HU-08 (entrar con Google, grupos, invitaciones, obras, equipo, sesiones y planteamientos), con base, `core`, API y web.
+Hecho: HU-01 a HU-09, HU-11, HU-12 y HU-13a (material con conexión), más la nota «cómo lo planteo» del responsable, el límite de 3 grupos por persona y la preparación del despliegue en Netlify (`netlify.toml`, `netlify/functions/api.ts`, `docs/despliegue.md`); falta que Santi lo publique (GitHub + Netlify).
 
 Sigue, en este orden:
 
-1. **HU-09** · inicio "lo mío" (próximas sesiones, planteamientos a mi cargo, sesiones realizadas sin hallazgos)
-2. **HU-11** · marcar la sesión como realizada, con asistentes
-3. **HU-12** · hallazgo en fragmentos con autor
-4. **HU-13** · material (foto, nota, nota de voz, enlace) con cola sin conexión y subida firmada a R2
-5. **HU-14 a HU-16** · acuerdos y tareas, comentarios, bitácora de sesión
-6. Pendientes transversales: límite de grupos por persona antes de exponer la API en público; despliegue en Netlify
+1. **Publicar** en Netlify siguiendo `docs/despliegue.md` (lo hace Santi con su cuenta) y probar en el celular
+2. **HU-13b** · material sin conexión: cola en IndexedDB con `id_cliente`, compresión de fotos, reintentos y contador «por subir»; PWA instalable
+3. **HU-14** · acuerdos, tareas para la próxima sesión e imprevistos
+4. **HU-16** · bitácora de sesión (HU-15, comentarios, es del corte 3)
+5. Pendientes transversales: límite de peticiones por usuario; entornos `prueba` y `real` separados; respaldo semanal; editar sesión (la API ya existe, falta la pantalla); barra de navegación inferior
 
 Fuera del MVP (no construir aún): IA de registro o sugerencias, pedir acceso, talleres, publicar versión, convocatorias, video directo.

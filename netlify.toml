@@ -1,0 +1,38 @@
+# art-flux en Netlify: la web (Vite) y la API (una sola función en /api/*).
+# Pasos y variables: docs/despliegue.md
+
+[build]
+  command = "pnpm --filter @art-flux/web build"
+  publish = "apps/web/dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # SUPABASE_URL y SUPABASE_ANON_KEY viajan al navegador a propósito (la llave anon es pública por
+  # diseño; RLS protege los datos). Sin esto, Netlify frena el build al encontrarlas en el paquete.
+  SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_ANON_KEY"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Cualquier dirección de la app (/grupo/obra/s02…) carga la misma página; el router decide.
+# La función de /api/* tiene su propia ruta (ver netlify/functions/api.ts) y no pasa por aquí.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"
+    # Cámara y micrófono solo para este sitio (foto y nota de voz).
+    Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
+
+# Los archivos con huella en el nombre nunca cambian.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
