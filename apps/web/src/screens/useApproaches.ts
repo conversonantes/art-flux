@@ -25,6 +25,11 @@ export function useApproaches(sessionId: string) {
     onSuccess: refresh,
   });
 
+  const setNote = useMutation({
+    mutationFn: (input: { id: string; note: string | null }) => api.setApproachNote(input.id, input.note),
+    onSuccess: refresh,
+  });
+
   const remove = useMutation({
     mutationFn: (id: string) => api.removeApproach(id),
     onSuccess: refresh,
@@ -46,5 +51,5 @@ export function useApproaches(sessionId: string) {
     onSuccess: (fresh) => queryClient.setQueryData(key, fresh),
   });
 
-  return { list, add, update, remove, reorder };
+  return { list, add, update, remove, reorder, setNote };
 }

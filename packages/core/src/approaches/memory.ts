@@ -40,6 +40,14 @@ export class InMemoryApproachesRepo implements ApproachesRepo {
     return approach;
   }
 
+  async setNote(approachId: string, note: string | null): Promise<Approach> {
+    const approach = await this.getById(approachId);
+    if (!approach) throw new Error("approach not found");
+    if (note === null) delete approach.note;
+    else approach.note = note;
+    return approach;
+  }
+
   async remove(approachId: string): Promise<void> {
     this.removed.add(approachId);
   }

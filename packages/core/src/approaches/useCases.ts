@@ -1,7 +1,7 @@
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import type { Clock, GroupsRepo } from "../groups";
 import type { Session, SessionsRepo } from "../sessions";
-import { addApproachSchema, updateApproachSchema, type Approach } from "./approach";
+import { addApproachSchema, approachNoteSchema, updateApproachSchema, type Approach } from "./approach";
 import type { ApproachesRepo } from "./repo";
 
 export interface ApproachDeps {
@@ -120,4 +120,18 @@ export async function reorderApproaches(
 
   await deps.approaches.reorder(session.id, input.orderedIds);
   return deps.approaches.listBySession(session.id);
+}
+
+/**
+ * "Cómo lo planteo": only the person the approach is assigned to writes the note, while the
+ * session is planned. Everyone in the group reads it. Empty text clears it.
+ */
+export async function setApproachNote(
+  deps: ApproachDeps,
+  input: { approachId: string; userId: string; note: string | null },
+): Promise<Approach> {
+  const { approach } = await approachContext(deps, input.approachId, input.userId);
+  if (approach.ownerId !== input.userId) throw new ForbiddenError("Solo quien trae el planteamiento escribe esta nota");
+  const note = approachNoteSchema.parse(input.note);
+  return deps.approaches.setNote(approach.id, note);
 }

@@ -408,3 +408,29 @@ describe("held sessions (HU-11)", () => {
     expect((await call("tok-owner", "POST", "/sessions/no-uuid/complete", { attendeeIds: [] })).status).toBe(400);
   });
 });
+
+describe("approach note «cómo lo planteo»", () => {
+  it("only the owner writes it, everyone reads it, and empty clears it", async () => {
+    const { call } = setup();
+    const group = await (await call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    const session = await (await call("tok-ana", "POST", `/groups/${group.id}/sessions`, {})).json();
+    const a = await (await call("tok-ana", "POST", `/sessions/${session.id}/approaches`, { text: "Calentamiento" })).json();
+    const url = `/approaches/${a.id}/note`;
+
+    const saved = await call("tok-ana", "PUT", url, { note: "  Saludo al sol  " });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ id: a.id, note: "Saludo al sol" });
+    const seen = await (await call("tok-owner", "GET", `/sessions/${session.id}/approaches`)).json();
+    expect(seen[0].note).toBe("Saludo al sol");
+
+    expect((await call("tok-owner", "PUT", url, { note: "mío" })).status).toBe(403); // not the owner
+    expect((await call("tok-luis", "PUT", url, { note: "x" })).status).toBe(404); // outsider
+    expect((await call("tok-ana", "PUT", url, { note: "x".repeat(2001) })).status).toBe(400);
+    expect((await call("tok-ana", "PUT", "/approaches/no-uuid/note", { note: "x" })).status).toBe(400);
+
+    const cleared = await (await call("tok-ana", "PUT", url, { note: "" })).json();
+    expect(cleared.note).toBeUndefined();
+  });
+});

@@ -66,6 +66,7 @@ Siempre `{ "error": "<código>", "message": "<texto en español listo para mostr
 | `PUT /sessions/:sessionId/approaches/order` | miembro | Nuevo orden completo (`ids`); 409 si la lista cambió entre tanto |
 | `PATCH /approaches/:approachId` | miembro | Cambiar `text` y/o `ownerId` |
 | `DELETE /approaches/:approachId` | miembro | Quitar (borrado suave) |
+| `PUT /approaches/:approachId/note` | solo el responsable | Nota «cómo lo planteo» (`note`, hasta 2000 caracteres; `null` o vacío la borra). La lee todo el grupo en el planteamiento. 403 si no eres el responsable; 409 si la sesión ya se realizó |
 
 ### Inicio «lo mío» (HU-09)
 | Método y ruta | Quién | Qué hace |

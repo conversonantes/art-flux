@@ -225,6 +225,13 @@ export function fakeApi(
       Object.assign(approach, input);
       return approach;
     }),
+    setApproachNote: vi.fn(async (approachId, note) => {
+      const approach = state.approaches.find((a) => a.id === approachId)!;
+      if (approach.ownerId !== "me") throw new ApiError(403, "forbidden", "Solo quien trae el planteamiento escribe esta nota");
+      if (note?.trim()) approach.note = note.trim();
+      else delete approach.note;
+      return { ...approach };
+    }),
     removeApproach: vi.fn(async (approachId) => {
       state.approaches = state.approaches.filter((a) => a.id !== approachId);
     }),

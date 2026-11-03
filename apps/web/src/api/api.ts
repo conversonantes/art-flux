@@ -59,6 +59,8 @@ export interface ApproachDto {
   /** The group member who brings it ("¿quién lo trae?"). */
   ownerId: string;
   createdBy: string;
+  /** "Cómo lo planteo": written by the owner, read by the whole group. */
+  note?: string;
   createdAt: string;
 }
 
@@ -142,6 +144,8 @@ export interface Api {
   addApproach(sessionId: string, input: { text: string; ownerId: string }): Promise<ApproachDto>;
   updateApproach(approachId: string, input: { text?: string; ownerId?: string }): Promise<ApproachDto>;
   removeApproach(approachId: string): Promise<void>;
+  /** The owner's note; null (or empty text) clears it. */
+  setApproachNote(approachId: string, note: string | null): Promise<ApproachDto>;
   /** Sends the full new order; answers with the list as the server now has it. */
   reorderApproaches(sessionId: string, orderedIds: string[]): Promise<ApproachDto[]>;
   updateProject(projectId: string, input: Partial<ProjectInput>): Promise<ProjectDto>;
@@ -199,6 +203,7 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
     addApproach: (sessionId, input) => request("POST", `/sessions/${sessionId}/approaches`, input),
     updateApproach: (approachId, input) => request("PATCH", `/approaches/${approachId}`, input),
     removeApproach: (approachId) => request("DELETE", `/approaches/${approachId}`),
+    setApproachNote: (approachId, note) => request("PUT", `/approaches/${approachId}/note`, { note }),
     reorderApproaches: (sessionId, orderedIds) =>
       request("PUT", `/sessions/${sessionId}/approaches/order`, { ids: orderedIds }),
     updateProject: (projectId, input) => request("PATCH", `/projects/${projectId}`, input),

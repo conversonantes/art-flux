@@ -31,6 +31,7 @@ import {
   reorderApproaches,
   resolveInitialGroup,
   revokeInvite,
+  setApproachNote,
   setTeamRoles,
   updateApproach,
   updateAttendees,
@@ -292,6 +293,14 @@ export function createApp(options: AppOptions) {
         },
       }),
     );
+  });
+
+  // The owner's note "cómo lo planteo"; null or empty text clears it.
+  app.put("/approaches/:approachId/note", async (c) => {
+    const approachId = uuid.parse(c.req.param("approachId"));
+    const body = await jsonBody(c.req.raw);
+    const note = body.note === null || body.note === undefined ? null : (str(body.note) ?? "");
+    return c.json(await setApproachNote(c.get("deps"), { approachId, userId: c.get("session").userId, note }));
   });
 
   app.delete("/approaches/:approachId", async (c) => {

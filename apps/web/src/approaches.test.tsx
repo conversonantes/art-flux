@@ -193,3 +193,55 @@ describe("order helpers", () => {
     expect(sortByIds(list, ["c", "a"]).map((x) => x.id)).toEqual(["c", "a", "b"]);
   });
 });
+
+describe("Nota «cómo lo planteo»", () => {
+  it("shows the owner their own button and saves the note under the approach", async () => {
+    const seeded = open(withApproaches());
+    const rows = await items();
+    // P3 is mine ("me"); P1 and P2 belong to Manu and Kokoro.
+    expect(within(rows[0]!).queryByRole("button", { name: /cómo lo planteo|mi nota/i })).not.toBeInTheDocument();
+    await userEvent.click(within(rows[2]!).getByRole("button", { name: "Anotar cómo lo planteo" }));
+
+    await userEvent.type(screen.getByLabelText("Cómo lo planteo"), "Un timeline de acciones por personaje");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar nota" }));
+
+    await waitFor(async () => expect(within((await items())[2]!).getByText("Un timeline de acciones por personaje")).toBeInTheDocument());
+    expect(seeded.api.setApproachNote).toHaveBeenCalledWith("ap-3", "Un timeline de acciones por personaje");
+    expect(within((await items())[2]!).getByText("Cómo lo plantea Santi")).toBeInTheDocument();
+    expect(within((await items())[2]!).getByRole("button", { name: "Editar mi nota" })).toBeInTheDocument();
+  });
+
+  it("everyone reads another person's note but cannot edit it", async () => {
+    const withNote = approachesOfS2.map((a) => (a.id === "ap-1" ? { ...a, note: "Saludo al sol y juegos" } : a));
+    open(withApproaches(withNote));
+    const first = (await items())[0]!;
+    expect(within(first).getByText("Saludo al sol y juegos")).toBeInTheDocument();
+    expect(within(first).getByText("Cómo lo plantea Manu")).toBeInTheDocument();
+    expect(within(first).queryByRole("button", { name: /mi nota|anotar/i })).not.toBeInTheDocument();
+  });
+
+  it("clears the note when saved empty, and Cancelar leaves it as it was", async () => {
+    const withNote = approachesOfS2.map((a) => (a.id === "ap-3" ? { ...a, note: "Mi plan" } : a));
+    const seeded = open(withApproaches(withNote));
+    await userEvent.click(within((await items())[2]!).getByRole("button", { name: "Editar mi nota" }));
+    await userEvent.type(screen.getByLabelText("Cómo lo planteo"), " cambiado");
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(within((await items())[2]!).getByText("Mi plan")).toBeInTheDocument();
+    expect(seeded.api.setApproachNote).not.toHaveBeenCalled();
+
+    await userEvent.click(within((await items())[2]!).getByRole("button", { name: "Editar mi nota" }));
+    await userEvent.clear(screen.getByLabelText("Cómo lo planteo"));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar nota" }));
+    await waitFor(async () => expect(within((await items())[2]!).queryByText("Mi plan")).not.toBeInTheDocument());
+    expect(seeded.api.setApproachNote).toHaveBeenCalledWith("ap-3", null);
+  });
+
+  it("is read-only once the session was held", async () => {
+    const held = groupSessions.map((s) => (s.id === "s-2" ? { ...s, status: "completed" as const } : s));
+    const withNote = approachesOfS2.map((a) => (a.id === "ap-3" ? { ...a, note: "Mi plan" } : a));
+    open(seededProject("admin", { sessions: held, approaches: withNote }));
+    const mine = (await items())[2]!;
+    expect(within(mine).getByText("Mi plan")).toBeInTheDocument();
+    expect(within(mine).queryByRole("button", { name: /mi nota|anotar/i })).not.toBeInTheDocument();
+  });
+});

@@ -11,7 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import type { ApproachDto, MemberDto } from "../api/api";
 import { reorderIds } from "../approachOrder";
 import { Avatar, Button, Chip, ErrorNote, Mono, TextButton } from "../ui";
@@ -115,6 +115,98 @@ function ApproachEditor({
   );
 }
 
+/** "Cómo lo planteo": the owner's note under the approach. Everyone reads it; only the owner writes it. */
+function NoteBlock({
+  approach,
+  owner,
+  canWrite,
+  pending,
+  error,
+  onSave,
+}: {
+  approach: ApproachDto;
+  owner: MemberDto | undefined;
+  canWrite: boolean;
+  pending: boolean;
+  error: unknown;
+  onSave: (note: string | null, done: () => void) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(approach.note ?? "");
+
+  if (editing) {
+    return (
+      <form
+        className="mt-3 rounded-2xl border-2 border-grafito bg-fondo p-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave(text.trim() || null, () => setEditing(false));
+        }}
+      >
+        <label className="block">
+          <span className="mb-2 block text-base font-semibold">Cómo lo planteo</span>
+          <textarea
+            aria-label="Cómo lo planteo"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={2000}
+            rows={4}
+            autoFocus
+            className="w-full rounded-xl border border-linea bg-hoja p-3 font-lectura text-lg outline-none focus:border-grafito"
+          />
+        </label>
+        {error != null && (
+          <div className="mt-2">
+            <ErrorNote error={error} />
+          </div>
+        )}
+        <div className="mt-2 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setText(approach.note ?? "");
+              setEditing(false);
+            }}
+            className="min-h-tactil px-3 text-lg text-gris"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={pending}
+            className="min-h-[48px] rounded-2xl bg-grafito px-6 text-lg font-semibold text-white disabled:opacity-50"
+          >
+            {pending ? "Guardando…" : "Guardar nota"}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  if (!approach.note && !canWrite) return null;
+  return (
+    <div className="mt-3 border-t border-linea pt-3">
+      {approach.note && (
+        <>
+          <Mono>Cómo lo plantea {owner?.displayName ?? "quien lo trae"}</Mono>
+          <p className="mt-1 whitespace-pre-line font-lectura text-lg">{approach.note}</p>
+        </>
+      )}
+      {canWrite && (
+        <TextButton
+          className="-ml-2 !text-base"
+          onClick={() => {
+            setText(approach.note ?? "");
+            setEditing(true);
+          }}
+        >
+          {approach.note ? "Editar mi nota" : "Anotar cómo lo planteo"}
+        </TextButton>
+      )}
+    </div>
+  );
+}
+
 function ApproachRow({
   approach,
   index,
@@ -123,6 +215,7 @@ function ApproachRow({
   busy,
   onEdit,
   onRemove,
+  note,
 }: {
   approach: ApproachDto;
   index: number;
@@ -131,6 +224,7 @@ function ApproachRow({
   busy: boolean;
   onEdit: () => void;
   onRemove: () => void;
+  note: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: approach.id,
@@ -178,6 +272,7 @@ function ApproachRow({
           <span className="max-w-[4.5rem] truncate font-mono text-xs text-gris">{owner?.displayName ?? "—"}</span>
         </span>
       </div>
+      {note}
     </li>
   );
 }
@@ -195,7 +290,7 @@ export function ApproachesSection({
   /** False once the session was held: planning is read-only then. */
   editable: boolean;
 }) {
-  const { list, add, update, remove, reorder } = useApproaches(sessionId);
+  const { list, add, update, remove, reorder, setNote } = useApproaches(sessionId);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -283,6 +378,16 @@ export function ApproachesSection({
                   busy={busy}
                   onEdit={() => setEditingId(a.id)}
                   onRemove={() => remove.mutate(a.id)}
+                  note={
+                    <NoteBlock
+                      approach={a}
+                      owner={ownerOf(a.ownerId)}
+                      canWrite={editable && a.ownerId === currentUserId}
+                      pending={setNote.isPending}
+                      error={setNote.error}
+                      onSave={(value, done) => setNote.mutate({ id: a.id, note: value }, { onSuccess: done })}
+                    />
+                  }
                 />
               ),
             )}

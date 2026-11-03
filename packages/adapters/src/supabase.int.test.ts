@@ -19,6 +19,7 @@ import {
   createSession,
   getProject,
   getMyHome,
+  setApproachNote,
   listAttendees,
   markCompleted,
   updateAttendees,
@@ -620,5 +621,52 @@ describe("held sessions on Supabase (HU-11)", () => {
     await markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [ana.id] });
     const seen = await db.intruder!.from("attendees").select("user_id").eq("session_id", session.id);
     expect(seen.data ?? []).toEqual([]);
+  });
+});
+
+describe("approach note on Supabase", () => {
+  async function approachOf(ownerActor: typeof owner) {
+    const g = await newGroup(`Nota ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    const session = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id });
+    const approach = await addApproach(ana.deps, {
+      id: randomUUID(), sessionId: session.id, userId: ana.id, text: "Calentamiento", ownerId: ownerActor.id,
+    });
+    return { session, approach };
+  }
+
+  it("the owner writes it, the group reads it, and the database refuses everyone else", async () => {
+    const { session, approach } = await approachOf(ana);
+    const saved = await setApproachNote(ana.deps, { approachId: approach.id, userId: ana.id, note: "  Saludo al sol " });
+    expect(saved.note).toBe("Saludo al sol");
+    const seen = await listApproaches(owner.deps, { sessionId: session.id, userId: owner.id });
+    expect(seen[0]?.note).toBe("Saludo al sol");
+
+    await expect(
+      setApproachNote(owner.deps, { approachId: approach.id, userId: ana.id, note: "x" }), // the admin's client, someone else's note
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    // Bypassing the core: neither the function nor a plain UPDATE lets a non-owner write it.
+    const viaFunction = await db.owner!.rpc("set_approach_note", { p_approach: approach.id, p_note: "ajeno" });
+    expect(viaFunction.error).not.toBeNull();
+    const direct = await db.ana!.from("approaches").update({ note: "directo" }).eq("id", approach.id);
+    expect(direct.error).not.toBeNull();
+    const outsider = await db.intruder!.from("approaches").select("note").eq("id", approach.id);
+    expect(outsider.data ?? []).toEqual([]);
+
+    expect((await listApproaches(ana.deps, { sessionId: session.id, userId: ana.id }))[0]?.note).toBe("Saludo al sol");
+    const cleared = await setApproachNote(ana.deps, { approachId: approach.id, userId: ana.id, note: null });
+    expect(cleared.note).toBeUndefined();
+  });
+
+  it("is frozen once the session was held", async () => {
+    const { session, approach } = await approachOf(ana);
+    await setApproachNote(ana.deps, { approachId: approach.id, userId: ana.id, note: "Antes" });
+    await markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [] });
+    await expect(
+      setApproachNote(ana.deps, { approachId: approach.id, userId: ana.id, note: "Tarde" }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    const viaFunction = await db.ana!.rpc("set_approach_note", { p_approach: approach.id, p_note: "Tarde" });
+    expect(viaFunction.error).not.toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import {
   createSession,
   listApproaches,
   removeApproach,
+  setApproachNote,
   reorderApproaches,
   updateApproach,
 } from "../index";
@@ -167,5 +168,49 @@ describe("listApproaches", () => {
     sessions.sessions[0]!.status = "completed";
     expect(await listApproaches(deps, { sessionId: "s1", userId: "manu" })).toHaveLength(1);
     await expect(listApproaches(deps, { sessionId: "s1", userId: "stranger" })).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("setApproachNote (cómo lo planteo)", () => {
+  it("the owner writes the note and everyone in the group reads it", async () => {
+    const { add, deps, texts } = await setup();
+    const a = await add("ana", "Calentamiento", "manu");
+    const saved = await setApproachNote(deps, { approachId: a.id, userId: "manu", note: "  Saludo al sol y juegos  " });
+    expect(saved.note).toBe("Saludo al sol y juegos");
+    const seen = await listApproaches(deps, { sessionId: "s1", userId: "admin" });
+    expect(seen[0]?.note).toBe("Saludo al sol y juegos");
+    expect(await texts()).toEqual(["Calentamiento"]); // the text itself is untouched
+  });
+
+  it("empty or null clears it", async () => {
+    const { add, deps } = await setup();
+    const a = await add("ana", "Calentamiento");
+    await setApproachNote(deps, { approachId: a.id, userId: "ana", note: "Algo" });
+    expect((await setApproachNote(deps, { approachId: a.id, userId: "ana", note: "   " })).note).toBeUndefined();
+    await setApproachNote(deps, { approachId: a.id, userId: "ana", note: "Otra vez" });
+    expect((await setApproachNote(deps, { approachId: a.id, userId: "ana", note: null })).note).toBeUndefined();
+  });
+
+  it("only the owner writes: not the author who assigned it, nor the admin; outsiders see nothing", async () => {
+    const { add, deps } = await setup();
+    const a = await add("ana", "Calentamiento", "manu");
+    await expect(setApproachNote(deps, { approachId: a.id, userId: "ana", note: "x" })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(setApproachNote(deps, { approachId: a.id, userId: "admin", note: "x" })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(setApproachNote(deps, { approachId: a.id, userId: "stranger", note: "x" })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(setApproachNote(deps, { approachId: "missing", userId: "ana", note: "x" })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("is too long above 2000 characters, and frozen once the session was held; reassigning moves the right to write", async () => {
+    const { add, deps, sessions } = await setup();
+    const a = await add("ana", "Calentamiento");
+    await expect(setApproachNote(deps, { approachId: a.id, userId: "ana", note: "x".repeat(2001) })).rejects.toThrow();
+
+    await setApproachNote(deps, { approachId: a.id, userId: "ana", note: "Mi plan" });
+    await updateApproach(deps, { approachId: a.id, userId: "ana", changes: { ownerId: "manu" } });
+    await expect(setApproachNote(deps, { approachId: a.id, userId: "ana", note: "y" })).rejects.toBeInstanceOf(ForbiddenError);
+    expect((await setApproachNote(deps, { approachId: a.id, userId: "manu", note: "El de Manu" })).note).toBe("El de Manu");
+
+    sessions.sessions[0]!.status = "completed";
+    await expect(setApproachNote(deps, { approachId: a.id, userId: "manu", note: "z" })).rejects.toBeInstanceOf(ConflictError);
   });
 });

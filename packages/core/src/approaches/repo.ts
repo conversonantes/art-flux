@@ -12,6 +12,8 @@ export interface ApproachesRepo {
   update(approachId: string, patch: ApproachPatch): Promise<Approach>;
   /** Soft delete: the row stays, it just stops appearing. Idempotent. */
   remove(approachId: string): Promise<void>;
+  /** Sets the owner's note, or clears it with null. Adapters backed by a database re-check who may. */
+  setNote(approachId: string, note: string | null): Promise<Approach>;
   /**
    * Sets the order in one step. `orderedIds` must be exactly the session's current approaches;
    * adapters backed by a database check that there, atomically.

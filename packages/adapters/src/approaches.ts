@@ -8,10 +8,11 @@ interface ApproachRow {
   text: string;
   owner_id: string;
   created_by: string;
+  note: string | null;
   created_at: string;
 }
 
-const COLUMNS = "id, session_id, position, text, owner_id, created_by, created_at";
+const COLUMNS = "id, session_id, position, text, owner_id, created_by, note, created_at";
 
 const toApproach = (r: ApproachRow): Approach => ({
   id: r.id,
@@ -20,6 +21,7 @@ const toApproach = (r: ApproachRow): Approach => ({
   text: r.text,
   ownerId: r.owner_id,
   createdBy: r.created_by,
+  ...(r.note ? { note: r.note } : {}),
   createdAt: new Date(r.created_at),
 });
 
@@ -107,6 +109,16 @@ export class SupabaseApproachesRepo implements ApproachesRepo {
       if (error.code === "P0004") throw new ForbiddenError("No se pudo quitar el planteamiento");
       throw error;
     }
+  }
+
+  async setNote(approachId: string, note: string | null): Promise<Approach> {
+    // An RPC: only the owner may write it, and the column is not writable directly (see migration approach_note).
+    const { data, error } = await this.db.rpc("set_approach_note", { p_approach: approachId, p_note: note });
+    if (error) {
+      if (error.code === "P0004") throw new ForbiddenError("No se pudo guardar la nota");
+      throw error;
+    }
+    return toApproach(data as ApproachRow);
   }
 
   async reorder(sessionId: string, orderedIds: string[]): Promise<void> {
