@@ -67,7 +67,7 @@ Regla práctica: si una política RLS necesita más de un `exists`, la lógica v
 
 **Login.** Supabase Auth con Google, directo desde la web. La API solo verifica la credencial. Si algún día se cambia de proveedor, el `core` recibe un `userId` y no sabe de dónde vino.
 
-**Sesión.** El `core` define `Session { userId, credential }` y `Authenticator`. La `credential` (hoy un JWT) es opaca: solo la lee el adaptador que la emitió; las rutas y los casos de uso usan únicamente `userId`. Cada adaptador decide cómo autorizar: el de Supabase reenvía el JWT para que RLS aplique; otro adaptador podría ignorar la credencial y filtrar por `userId`.
+**Sesión.** El `core` define `AuthSession { userId, credential }` y `Authenticator` (el nombre evita confundirla con una sesión de ensayo). La `credential` (hoy un JWT) es opaca: solo la lee el adaptador que la emitió; las rutas y los casos de uso usan únicamente `userId`. Cada adaptador decide cómo autorizar: el de Supabase reenvía el JWT para que RLS aplique; otro adaptador podría ignorar la credencial y filtrar por `userId`.
 
 **Perfiles.** Las tablas apuntan a `profiles`, no a `auth.users`. Un trigger crea el perfil cuando alguien inicia sesión por primera vez, y `current_user_id()` es la única función SQL que pregunta a Supabase quién llama. Lo que alguien registró sobrevive aunque su cuenta de acceso se elimine o cambie el proveedor.
 

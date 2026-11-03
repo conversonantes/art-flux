@@ -13,3 +13,11 @@ export class NotFoundError extends Error {
     this.name = "NotFoundError";
   }
 }
+
+/** The action is valid in general but not in the current state (e.g. the project already has an origin). */
+export class ConflictError extends Error {
+  constructor(message = "Eso ya no se puede hacer en este estado") {
+    super(message);
+    this.name = "ConflictError";
+  }
+}

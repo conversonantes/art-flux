@@ -18,7 +18,7 @@ export function slugBase(text: string, opts: { fallback: string; min: number; ma
 export function slugCandidate(
   base: string,
   attempt: number,
-  opts: { max: number; reserved: ReadonlySet<string> },
+  opts: { max: number; reserved: { has(candidate: string): boolean } },
 ): string {
   const candidate =
     attempt <= 1

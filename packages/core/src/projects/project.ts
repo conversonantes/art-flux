@@ -15,8 +15,7 @@ export const PROJECT_SLUG_MAX = 40;
 export const MAX_THEMES = 8;
 export const MAX_ROLES = 6;
 
-/** Words that collide with project sub-routes. */
-export const RESERVED_PROJECT_SLUGS: ReadonlySet<string> = new Set([
+const RESERVED_PROJECT_WORDS: ReadonlySet<string> = new Set([
   "invitar",
   "obras",
   "nueva",
@@ -33,6 +32,14 @@ export const RESERVED_PROJECT_SLUGS: ReadonlySet<string> = new Set([
   "settings",
   "projects",
 ]);
+
+/**
+ * Slugs a project cannot take: words that collide with project sub-routes, and S01, S02...
+ * which are the addresses of sessions (/group/s02 and /group/project/s02).
+ */
+export const RESERVED_PROJECT_SLUGS: { has(slug: string): boolean } = {
+  has: (slug) => RESERVED_PROJECT_WORDS.has(slug) || /^s\d+$/.test(slug),
+};
 
 /** "#Memoria  " → "memoria"; drops empties and duplicates. */
 export function normalizeThemes(themes: string[]): string[] {
@@ -87,6 +94,8 @@ export interface Project {
   status: ProjectStatus;
   themes: string[];
   visibilityAgreement?: string;
+  /** The group session this project was born from (HU-05); set when that session is attached. */
+  originSessionId?: string;
   createdAt: Date;
 }
 

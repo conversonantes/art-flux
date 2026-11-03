@@ -16,10 +16,11 @@ interface ProjectRow {
   status: ProjectStatus;
   themes: string[];
   visibility_agreement: string | null;
+  origin_session_id: string | null;
   created_at: string;
 }
 
-const COLUMNS = "id, group_id, slug, title, status, themes, visibility_agreement, created_at";
+const COLUMNS = "id, group_id, slug, title, status, themes, visibility_agreement, origin_session_id, created_at";
 
 const toProject = (r: ProjectRow): Project => ({
   id: r.id,
@@ -29,6 +30,7 @@ const toProject = (r: ProjectRow): Project => ({
   status: r.status,
   themes: r.themes,
   ...(r.visibility_agreement ? { visibilityAgreement: r.visibility_agreement } : {}),
+  ...(r.origin_session_id ? { originSessionId: r.origin_session_id } : {}),
   createdAt: new Date(r.created_at),
 });
 

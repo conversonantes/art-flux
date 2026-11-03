@@ -25,7 +25,7 @@ import {
   type AppDeps,
   type Authenticator,
   type CreateProjectInput,
-  type Session,
+  type AuthSession,
   type UpdateProjectInput,
 } from "@art-flux/core";
 
@@ -33,10 +33,10 @@ export interface AppOptions {
   /** Validates the bearer credential and returns the session, or null if it is not valid. */
   authenticator: Authenticator;
   /** Repositories acting as this session's user. How they authorize is the adapter's business. */
-  depsFor(session: Session): AppDeps;
+  depsFor(session: AuthSession): AppDeps;
 }
 
-type Env = { Variables: { session: Session; deps: AppDeps } };
+type Env = { Variables: { session: AuthSession; deps: AppDeps } };
 
 const uuid = z.uuid("Identificador no válido");
 
