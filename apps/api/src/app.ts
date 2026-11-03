@@ -14,6 +14,7 @@ import {
   createInvite,
   createProjectWithOrigin,
   createSession,
+  getMyHome,
   getProject,
   getSession,
   listApproaches,
@@ -139,6 +140,12 @@ export function createApp(options: AppOptions) {
     if (!token) throw new HTTPException(400, { message: "Falta el enlace de invitación" });
     const group = await acceptInvite(c.get("deps"), { token, userId: c.get("session").userId });
     return c.json(group);
+  });
+
+  // Home (HU-09): what is on my plate in this group.
+  app.get("/groups/:groupId/home", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    return c.json(await getMyHome(c.get("deps"), { groupId, userId: c.get("session").userId }));
   });
 
   // Projects (HU-05) ----------------------------------------------------------------------

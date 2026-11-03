@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
 import { sessionLabel, todayIso } from "./sessionFormat";
-import { cristinaSessions, fakeAuth, groupSessions, me, seededProject } from "./test/fakes";
+import { approachesOfS2, cristinaSessions, fakeAuth, groupSessions, me, seededProject } from "./test/fakes";
 
 type Seeded = ReturnType<typeof seededProject>;
 
@@ -124,7 +124,7 @@ describe("sessions on screen", () => {
   it("lists the group's own sessions on the group page", async () => {
     open("/conversonantes", withSessions());
     expect(await screen.findByRole("heading", { name: "Sesiones del grupo" })).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: /reencuentro/i })).toBeInTheDocument();
+    expect(await screen.findAllByRole("link", { name: /reencuentro/i })).toHaveLength(2); // upcoming + the group list
     expect(screen.getByRole("link", { name: /\+ nueva sesión/i })).toBeInTheDocument();
   });
 });
@@ -163,5 +163,39 @@ describe("HU-05 · obra que nace de una sesión", () => {
       "g-conv",
       expect.not.objectContaining({ originSessionId: expect.anything() }),
     );
+  });
+});
+
+describe("HU-09 · inicio «lo mío»", () => {
+  it("greets by name and lists my approaches and the upcoming sessions, each leading to its screen", async () => {
+    const seeded = seededProject("member", {
+      sessions: [...groupSessions, ...cristinaSessions],
+      approaches: approachesOfS2,
+    });
+    const { history } = open("/conversonantes", seeded);
+
+    expect(await screen.findByRole("heading", { name: "Hola, Santi." })).toBeInTheDocument();
+    const mine = await screen.findByRole("heading", { name: "A tu cargo" });
+    const link = await within(mine.closest("section")!).findByRole("link", { name: /análisis de acciones por personaje/i });
+    expect(link).toHaveTextContent("S02");
+
+    const upcoming = screen.getByRole("heading", { name: "Próximas sesiones" }).closest("section")!;
+    expect(within(upcoming).getByText(/3 planteamientos/)).toBeInTheDocument();
+    await userEvent.click(within(upcoming).getByRole("link", { name: /analizar el texto/i }));
+    expect(history.location.pathname).toBe("/conversonantes/cristina/s02"); // a project session
+  });
+
+  it("lists held sessions under «Falta registrar»", async () => {
+    open("/conversonantes", seededProject("member", { sessions: cristinaSessions }));
+    const record = (await screen.findByRole("heading", { name: "Falta registrar" })).closest("section")!;
+    expect(within(record).getByText("realizada")).toBeInTheDocument();
+    expect(within(record).getByRole("link", { name: /reencuentro/i })).toBeInTheDocument();
+  });
+
+  it("says so when there is nothing pending", async () => {
+    open("/conversonantes", seededProject("member"));
+    expect(await screen.findByText(/nada pendiente por ahora/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Falta registrar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "A tu cargo" })).not.toBeInTheDocument();
   });
 });

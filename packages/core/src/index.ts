@@ -5,4 +5,5 @@ export * from "./invites";
 export * from "./projects";
 export * from "./sessions";
 export * from "./approaches";
+export * from "./home";
 export * from "./deps";

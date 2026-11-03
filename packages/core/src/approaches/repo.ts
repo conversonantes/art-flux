@@ -7,6 +7,8 @@ export interface ApproachesRepo {
   getById(approachId: string): Promise<Approach | null>;
   /** Not removed, by position (ties by creation time). */
   listBySession(sessionId: string): Promise<Approach[]>;
+  /** Not removed, of all the given sessions at once (no particular order). */
+  listBySessions(sessionIds: string[]): Promise<Approach[]>;
   update(approachId: string, patch: ApproachPatch): Promise<Approach>;
   /** Soft delete: the row stays, it just stops appearing. Idempotent. */
   remove(approachId: string): Promise<void>;

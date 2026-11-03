@@ -75,6 +75,17 @@ export class SupabaseApproachesRepo implements ApproachesRepo {
     return (data as ApproachRow[]).map(toApproach);
   }
 
+  async listBySessions(sessionIds: string[]): Promise<Approach[]> {
+    if (sessionIds.length === 0) return [];
+    const { data, error } = await this.db
+      .from("approaches")
+      .select(COLUMNS)
+      .in("session_id", sessionIds)
+      .is("deleted_at", null);
+    if (error) throw error;
+    return (data as ApproachRow[]).map(toApproach);
+  }
+
   async update(approachId: string, patch: ApproachPatch): Promise<Approach> {
     const changes: Record<string, unknown> = {};
     if (patch.text !== undefined) changes.text = patch.text;

@@ -7,6 +7,7 @@ import { formatSessionDate, sessionLabel, sessionSlug } from "../sessionFormat";
 import { useAuth, useSession } from "../auth/AuthProvider";
 import { lastGroup } from "../storage";
 import { Avatar, ErrorNote, Lead, LinkButton, Loading, Mono, Page, RoleTag, Tag, TextButton } from "../ui";
+import { GroupHome } from "./GroupHome";
 import { useGroup } from "./useGroup";
 
 const NEW_GROUP = "__nuevo__";
@@ -87,10 +88,12 @@ export function GroupScreen() {
         </div>
       </header>
 
-      <h1 className="mt-8 text-5xl">{group.name}</h1>
+      <h1 className="mt-8 text-5xl">Hola, {user.name?.split(" ")[0] ?? "bienvenida"}.</h1>
       <div className="mt-3">
-        <Lead>Aquí vive el proceso del grupo: obras, sesiones y ejercicios.</Lead>
+        <Lead>Esto es lo que te toca.</Lead>
       </div>
+
+      <GroupHome group={group} projects={projects.data} />
 
       <section className="mt-8">
         <div className="flex items-center justify-between border-b border-linea pb-2">

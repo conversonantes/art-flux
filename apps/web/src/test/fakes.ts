@@ -114,6 +114,20 @@ export function fakeApi(
       if (!group) throw new ApiError(410, "invite_invalid", "Este enlace ya no sirve. Pídele a un admin uno nuevo.");
       return group;
     }),
+    home: vi.fn(async (groupId) => {
+      const sessions = state.sessions.filter((s) => s.groupId === groupId);
+      const planned = sessions.filter((s) => s.status === "planned");
+      const mine = planned.flatMap((session) =>
+        approachesOf(session.id)
+          .filter((a) => a.ownerId === "me")
+          .map((approach) => ({ approach, session })),
+      );
+      return {
+        toRecord: sessions.filter((s) => s.status === "completed"),
+        mine,
+        upcoming: planned.map((session) => ({ session, approachCount: approachesOf(session.id).length })),
+      };
+    }),
     projects: vi.fn(async (groupId) => state.projects.filter((p) => p.groupId === groupId)),
     project: vi.fn(async (groupId, slug) => {
       const project = state.projects.find((p) => p.groupId === groupId && p.slug === slug);

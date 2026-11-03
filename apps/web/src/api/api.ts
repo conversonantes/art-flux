@@ -62,6 +62,16 @@ export interface ApproachDto {
   createdAt: string;
 }
 
+/** HU-09: what is on my plate in a group. */
+export interface HomeDto {
+  /** Held sessions that still need their record. */
+  toRecord: SessionDto[];
+  /** Approaches I bring, in planned sessions. */
+  mine: { approach: ApproachDto; session: SessionDto }[];
+  /** Planned sessions, soonest first. */
+  upcoming: { session: SessionDto; approachCount: number }[];
+}
+
 export interface ProjectDto {
   id: string;
   groupId: string;
@@ -115,6 +125,7 @@ export interface Api {
   createInvite(groupId: string, input: { label?: string }): Promise<InviteDto>;
   revokeInvite(inviteId: string): Promise<void>;
   acceptInvite(token: string): Promise<GroupDto>;
+  home(groupId: string): Promise<HomeDto>;
   projects(groupId: string): Promise<ProjectDto[]>;
   project(groupId: string, slug: string): Promise<ProjectDto>;
   createProject(groupId: string, input: ProjectInput): Promise<ProjectDto>;
@@ -165,6 +176,7 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
     createInvite: (groupId, input) => request("POST", `/groups/${groupId}/invites`, input),
     revokeInvite: (inviteId) => request("DELETE", `/invites/${inviteId}`),
     acceptInvite: (token) => request("POST", "/invites/accept", { token }),
+    home: (groupId) => request("GET", `/groups/${groupId}/home`),
     projects: (groupId) => request("GET", `/groups/${groupId}/projects`),
     project: (groupId, slug) => request("GET", `/groups/${groupId}/projects/${encodeURIComponent(slug)}`),
     createProject: (groupId, input) => request("POST", `/groups/${groupId}/projects`, input),

@@ -29,6 +29,10 @@ export class InMemoryApproachesRepo implements ApproachesRepo {
     );
   }
 
+  async listBySessions(sessionIds: string[]): Promise<Approach[]> {
+    return this.approaches.filter((a) => sessionIds.includes(a.sessionId) && !this.removed.has(a.id));
+  }
+
   async update(approachId: string, patch: ApproachPatch): Promise<Approach> {
     const approach = await this.getById(approachId);
     if (!approach) throw new Error("approach not found");

@@ -51,7 +51,7 @@ describe("HU-02 · grupo", () => {
       groups: [conversonantes],
       members: { "g-conv": [{ userId: "me", role: "admin", displayName: "Santi" }] },
     }));
-    expect(await screen.findByRole("heading", { name: "Conversonantes" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hola, Santi." })).toBeInTheDocument();
     expect(history.location.pathname).toBe("/conversonantes");
   });
 
@@ -65,7 +65,7 @@ describe("HU-02 · grupo", () => {
     await userEvent.click(await screen.findByRole("link", { name: /^otro grupo/i }));
     const selector = await screen.findByLabelText("Cambiar de grupo");
     await userEvent.selectOptions(selector, "conversonantes");
-    expect(await screen.findByRole("heading", { name: "Conversonantes" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hola, Santi." })).toBeInTheDocument();
   });
 });
 
@@ -196,7 +196,7 @@ describe("HU-03 · abrir un enlace de invitación", () => {
   it("joins you and opens the group when you are signed in", async () => {
     const seeded = invited();
     const { history } = open("/i/abc", fakeAuth(me), seeded);
-    expect(await screen.findByRole("heading", { name: "Conversonantes" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hola, Santi." })).toBeInTheDocument();
     expect(seeded.api.acceptInvite).toHaveBeenCalledWith("abc");
     expect(history.location.pathname).toBe("/conversonantes");
   });
@@ -207,7 +207,7 @@ describe("HU-03 · abrir un enlace de invitación", () => {
     open("/i/abc", auth, seeded);
 
     await userEvent.click(await screen.findByRole("button", { name: /entrar con google/i }));
-    expect(await screen.findByRole("heading", { name: "Conversonantes" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hola, Santi." })).toBeInTheDocument();
     expect(seeded.api.acceptInvite).toHaveBeenCalledWith("abc");
     expect(sessionStorage.getItem("af:pendingInvite")).toBeNull();
   });

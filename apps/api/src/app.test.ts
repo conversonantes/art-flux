@@ -352,3 +352,24 @@ describe("approaches (HU-08)", () => {
     expect((await call("tok-ana", "GET", "/sessions/no-uuid/approaches")).status).toBe(400);
   });
 });
+
+describe("home (HU-09)", () => {
+  it("gives my approaches and the upcoming sessions, and hides the group from outsiders", async () => {
+    const { call } = setup();
+    const group = await (await call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    const session = await (await call("tok-ana", "POST", `/groups/${group.id}/sessions`, { objective: "Analizar" })).json();
+    await call("tok-ana", "POST", `/sessions/${session.id}/approaches`, { text: "Calentamiento" });
+    await call("tok-ana", "POST", `/sessions/${session.id}/approaches`, { text: "Otro" });
+    await call("tok-owner", "POST", `/sessions/${session.id}/approaches`, { text: "De la dueña" });
+
+    const home = await (await call("tok-ana", "GET", `/groups/${group.id}/home`)).json();
+    expect(home.toRecord).toEqual([]);
+    expect(home.mine.map((m: { approach: { text: string } }) => m.approach.text)).toEqual(["Calentamiento", "Otro"]);
+    expect(home.upcoming).toMatchObject([{ session: { id: session.id }, approachCount: 3 }]);
+
+    expect((await call("tok-luis", "GET", `/groups/${group.id}/home`)).status).toBe(404);
+    expect((await call("tok-ana", "GET", "/groups/no-uuid/home")).status).toBe(400);
+  });
+});

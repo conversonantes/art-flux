@@ -67,6 +67,11 @@ Siempre `{ "error": "<código>", "message": "<texto en español listo para mostr
 | `PATCH /approaches/:approachId` | miembro | Cambiar `text` y/o `ownerId` |
 | `DELETE /approaches/:approachId` | miembro | Quitar (borrado suave) |
 
+### Inicio «lo mío» (HU-09)
+| Método y ruta | Quién | Qué hace |
+| --- | --- | --- |
+| `GET /groups/:groupId/home` | miembro | `{ toRecord, mine, upcoming }`: sesiones realizadas por registrar, mis planteamientos en sesiones planeadas y las sesiones planeadas (con su número de planteamientos), las más próximas primero. 404 si no es del grupo |
+
 ## Cómo agregar una ruta
 
 1. El caso de uso va en `packages/core` (con su prueba); la ruta solo lee la petición, llama al caso de uso y devuelve el resultado.

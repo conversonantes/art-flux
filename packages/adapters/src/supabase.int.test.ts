@@ -18,6 +18,7 @@ import {
   createProjectWithOrigin,
   createSession,
   getProject,
+  getMyHome,
   getSession,
   listApproaches,
   listInvites,
@@ -434,6 +435,27 @@ describe("sessions on Supabase (HU-07)", () => {
     // The database re-checks even if the core is bypassed.
     const direct = await db.ana!.rpc("attach_origin_session", { p_project: second.id, p_session: s2.id, p_number: 1 });
     expect(direct.error).not.toBeNull();
+  });
+});
+
+describe("home on Supabase (HU-09)", () => {
+  it("gathers my approaches and upcoming sessions in one go; outsiders get nothing", async () => {
+    const g = await newGroup(`Inicio ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    const s1 = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id, date: "2026-12-05" });
+    const s2 = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id, date: "2026-12-01" });
+    await addApproach(ana.deps, { id: randomUUID(), sessionId: s1.id, userId: ana.id, text: "Mío" });
+    await addApproach(ana.deps, { id: randomUUID(), sessionId: s1.id, userId: ana.id, text: "Del dueño", ownerId: owner.id });
+
+    const home = await getMyHome(ana.deps, { groupId: g.id, userId: ana.id });
+    expect(home.upcoming.map((u) => [u.session.id, u.approachCount])).toEqual([[s2.id, 0], [s1.id, 2]]);
+    expect(home.mine.map((m) => m.approach.text)).toEqual(["Mío"]);
+
+    await expect(getMyHome(intruder.deps, { groupId: g.id, userId: intruder.id })).rejects.toBeInstanceOf(NotFoundError);
+    // Bypassing the core: RLS shows an outsider no approaches.
+    const direct = await db.intruder!.from("approaches").select("id").in("session_id", [s1.id, s2.id]);
+    expect(direct.data ?? []).toEqual([]);
   });
 });
 
