@@ -18,6 +18,7 @@ import {
   getProject,
   getSession,
   listApproaches,
+  listFragments,
   listAttendees,
   listInvites,
   listMembers,
@@ -27,9 +28,11 @@ import {
   listTeam,
   markCompleted,
   removeApproach,
+  removeFragment,
   removeFromTeam,
   reorderApproaches,
   resolveInitialGroup,
+  saveFragment,
   revokeInvite,
   setApproachNote,
   setTeamRoles,
@@ -306,6 +309,33 @@ export function createApp(options: AppOptions) {
   app.delete("/approaches/:approachId", async (c) => {
     const approachId = uuid.parse(c.req.param("approachId"));
     await removeApproach(c.get("deps"), { approachId, userId: c.get("session").userId });
+    return c.body(null, 204);
+  });
+
+  // Findings (HU-12) -----------------------------------------------------------------------
+  app.get("/approaches/:approachId/findings", async (c) => {
+    const approachId = uuid.parse(c.req.param("approachId"));
+    return c.json(await listFragments(c.get("deps"), { approachId, userId: c.get("session").userId }));
+  });
+
+  // Creates the fragment, or edits its text if that id already exists (autosave and retries).
+  app.put("/findings/:fragmentId", async (c) => {
+    const id = uuid.parse(c.req.param("fragmentId"));
+    const body = await jsonBody(c.req.raw);
+    return c.json(
+      await saveFragment(c.get("deps"), {
+        id,
+        approachId: uuid.parse(body.approachId),
+        userId: c.get("session").userId,
+        kind: str(body.kind) ?? "",
+        text: str(body.text) ?? "",
+      }),
+    );
+  });
+
+  app.delete("/findings/:fragmentId", async (c) => {
+    const fragmentId = uuid.parse(c.req.param("fragmentId"));
+    await removeFragment(c.get("deps"), { fragmentId, userId: c.get("session").userId });
     return c.body(null, 204);
   });
 

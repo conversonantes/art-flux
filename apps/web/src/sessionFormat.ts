@@ -11,6 +11,15 @@ export function parseSessionSlug(segment: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/** The route segment of an approach by its place in the session's list: p1, p2, p3… */
+export const approachSlug = (order: number) => `p${order}`;
+
+/** "p3" -> 3; anything else -> null. */
+export function parseApproachSlug(segment: string): number | null {
+  const match = /^p(\d+)$/.exec(segment);
+  return match ? Number(match[1]) : null;
+}
+
 /** Today as "YYYY-MM-DD" in the person\x27s own calendar (not UTC). */
 export function todayIso(now = new Date()): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");

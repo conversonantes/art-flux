@@ -4,7 +4,7 @@ import { useApi } from "../api/ApiProvider";
 import { useSession } from "../auth/AuthProvider";
 import { ApproachesSection } from "./ApproachesSection";
 import { AttendanceSection } from "./AttendanceSection";
-import { formatSessionDate, isPastDate, sessionLabel } from "../sessionFormat";
+import { formatSessionDate, isPastDate, sessionLabel, sessionSlug } from "../sessionFormat";
 import { BackLink, ErrorNote, Loading, Mono, Page, Tag } from "../ui";
 import { useGroup } from "./useGroup";
 
@@ -71,6 +71,7 @@ export function SessionScreen({ handle, projectSlug, number }: { handle: string;
         members={members.data ?? []}
         currentUserId={user.id}
         editable={s.status === "planned"}
+        findingPath={`/${handle}/${projectSlug ? `${projectSlug}/` : ""}${sessionSlug(s.number)}`}
       />
 
       <AttendanceSection session={s} members={members.data ?? []} label={sessionLabel(s.number)} />

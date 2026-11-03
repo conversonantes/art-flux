@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   InMemoryApproachesRepo,
+  InMemoryFindingsRepo,
   InMemoryGroupsRepo,
   InMemoryProjectsRepo,
   InMemorySessionsRepo,
@@ -10,6 +11,7 @@ import {
   createSession,
   getMyHome,
   removeApproach,
+  saveFragment,
 } from "../index";
 
 let time = new Date("2026-11-02T10:00:00Z").getTime();
@@ -20,7 +22,8 @@ async function setup() {
   const projects = new InMemoryProjectsRepo();
   const sessions = new InMemorySessionsRepo(projects);
   const approaches = new InMemoryApproachesRepo();
-  const deps = { groups, projects, sessions, approaches, clock };
+  const findings = new InMemoryFindingsRepo();
+  const deps = { groups, projects, sessions, approaches, findings, clock };
   await createGroup({ groups, clock }, { id: "g1", userId: "admin", name: "Conversonantes" });
   groups.members.push({ groupId: "g1", userId: "ana", role: "member" });
   groups.members.push({ groupId: "g1", userId: "manu", role: "member" });
@@ -56,16 +59,33 @@ describe("getMyHome (HU-09)", () => {
     expect(manu.mine.map((m) => m.approach.text)).toEqual(["De Manu"]);
   });
 
-  it("moves held sessions out of upcoming and into 'to record'", async () => {
+  it("moves held sessions out of upcoming; 'to record' shows the progress and who is missing, 'mine' keeps my pending ones", async () => {
     const { deps, sessions } = await setup();
     await createSession(deps, { id: "s1", groupId: "g1", userId: "ana" });
     await createSession(deps, { id: "s2", groupId: "g1", userId: "ana" });
     await addApproach(deps, { id: "a1", sessionId: "s1", userId: "ana", text: "Mío" });
+    await addApproach(deps, { id: "a2", sessionId: "s1", userId: "ana", text: "De Manu", ownerId: "manu" });
+    await addApproach(deps, { id: "a3", sessionId: "s1", userId: "ana", text: "De Ana también" });
     sessions.sessions.find((s) => s.id === "s1")!.status = "completed";
+    await saveFragment(deps, { id: "f1", approachId: "a3", userId: "ana", kind: "found", text: "Algo" });
 
     const home = await getMyHome(deps, { groupId: "g1", userId: "ana" });
-    expect(home.toRecord.map((s) => s.id)).toEqual(["s1"]);
+    expect(home.toRecord).toMatchObject([{ session: { id: "s1" }, total: 3, done: 1, pendingOwnerIds: ["ana", "manu"] }]);
     expect(home.upcoming.map((u) => u.session.id)).toEqual(["s2"]);
+    expect(home.mine.map((m) => [m.approach.id, m.order])).toEqual([["a1", 1]]); // a3 already has its finding; a2 is Manu's
+  });
+
+  it("a held session leaves 'to record' once every approach has a finding, or if it had none", async () => {
+    const { deps, sessions } = await setup();
+    await createSession(deps, { id: "s1", groupId: "g1", userId: "ana" });
+    await createSession(deps, { id: "s2", groupId: "g1", userId: "ana" });
+    await addApproach(deps, { id: "a1", sessionId: "s1", userId: "ana", text: "Uno" });
+    for (const s of sessions.sessions) s.status = "completed";
+    expect((await getMyHome(deps, { groupId: "g1", userId: "ana" })).toRecord.map((r) => r.session.id)).toEqual(["s1"]); // s2 has nothing to write up
+
+    await saveFragment(deps, { id: "f1", approachId: "a1", userId: "manu", kind: "missing", text: "Faltó tiempo" });
+    const home = await getMyHome(deps, { groupId: "g1", userId: "ana" });
+    expect(home.toRecord).toEqual([]);
     expect(home.mine).toEqual([]);
   });
 

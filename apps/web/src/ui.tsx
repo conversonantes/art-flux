@@ -99,10 +99,15 @@ const AVATAR_COLORS = [
   "bg-cat-voz",
 ] as const;
 
-export function Avatar({ name, seed, size = 44 }: { name?: string | undefined; seed: string; size?: number }) {
+/** A person's color, the same everywhere: avatar, and the bar of their findings. */
+export function personColor(seed: string): string {
   let hash = 0;
   for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const color = AVATAR_COLORS[hash % AVATAR_COLORS.length];
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]!;
+}
+
+export function Avatar({ name, seed, size = 44 }: { name?: string | undefined; seed: string; size?: number }) {
+  const color = personColor(seed);
   const initial = (name?.trim()[0] ?? "?").toUpperCase();
   return (
     <span

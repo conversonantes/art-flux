@@ -1,7 +1,8 @@
 import { useParams } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { parseSessionSlug } from "../sessionFormat";
+import { parseApproachSlug, parseSessionSlug } from "../sessionFormat";
 import { Page } from "../ui";
+import { FindingScreen } from "./FindingScreen";
 import { ProjectScreen } from "./ProjectScreen";
 import { SessionScreen } from "./SessionScreen";
 
@@ -22,6 +23,12 @@ export function ProjectSessionRoute() {
     slug?: string;
     session?: string;
   };
+  // /<group>/s02/p3 is the finding of an approach of a group session; otherwise a project's session.
+  const groupSession = parseSessionSlug(slug);
+  const approachNumber = parseApproachSlug(session);
+  if (groupSession !== null && approachNumber !== null) {
+    return <FindingScreen handle={handle} number={groupSession} approachNumber={approachNumber} />;
+  }
   const number = parseSessionSlug(session);
   if (number === null) {
     return (
@@ -34,4 +41,27 @@ export function ProjectSessionRoute() {
     );
   }
   return <SessionScreen handle={handle} projectSlug={slug} number={number} />;
+}
+
+/** /<group>/<project>/s02/p3 */
+export function ProjectApproachRoute() {
+  const { handle = "", slug = "", session = "", approach = "" } = useParams({ strict: false }) as {
+    handle?: string;
+    slug?: string;
+    session?: string;
+    approach?: string;
+  };
+  const number = parseSessionSlug(session);
+  const approachNumber = parseApproachSlug(approach);
+  if (number === null || approachNumber === null) {
+    return (
+      <Page className="justify-center">
+        <h1 className="text-4xl">No encontramos esa página</h1>
+        <Link to="/$handle/$slug" params={{ handle, slug }} className="mt-4 min-h-tactil text-lg font-semibold text-verde">
+          Volver a la obra
+        </Link>
+      </Page>
+    );
+  }
+  return <FindingScreen handle={handle} projectSlug={slug} number={number} approachNumber={approachNumber} />;
 }

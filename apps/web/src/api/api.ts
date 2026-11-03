@@ -64,12 +64,25 @@ export interface ApproachDto {
   createdAt: string;
 }
 
+/** One person's contribution to the finding of an approach (HU-12). */
+export interface FindingFragmentDto {
+  id: string;
+  approachId: string;
+  authorId: string;
+  /** "found": Qué encontramos; "missing": Qué faltó. */
+  kind: "found" | "missing";
+  /** Plain text with **bold**, ==highlight== and "- " list marks. */
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** HU-09: what is on my plate in a group. */
 export interface HomeDto {
-  /** Held sessions that still need their record. */
-  toRecord: SessionDto[];
-  /** Approaches I bring, in planned sessions. */
-  mine: { approach: ApproachDto; session: SessionDto }[];
+  /** Held sessions with approaches still without a finding, with the progress. */
+  toRecord: { session: SessionDto; total: number; done: number; pendingOwnerIds: string[] }[];
+  /** Approaches I bring: those of planned sessions and the held ones still without a finding. */
+  mine: { approach: ApproachDto; session: SessionDto; /** The "P3" of its address. */ order: number }[];
   /** Planned sessions, soonest first. */
   upcoming: { session: SessionDto; approachCount: number }[];
 }
@@ -128,6 +141,10 @@ export interface Api {
   revokeInvite(inviteId: string): Promise<void>;
   acceptInvite(token: string): Promise<GroupDto>;
   home(groupId: string): Promise<HomeDto>;
+  findings(approachId: string): Promise<FindingFragmentDto[]>;
+  /** Creates the fragment or, if the id exists, edits its text (autosave, retries). Only its author may. */
+  saveFinding(fragmentId: string, input: { approachId: string; kind: FindingFragmentDto["kind"]; text: string }): Promise<FindingFragmentDto>;
+  removeFinding(fragmentId: string): Promise<void>;
   /** HU-11: planned → held, with who attended (user ids). */
   completeSession(sessionId: string, attendeeIds: string[]): Promise<SessionDto>;
   attendees(sessionId: string): Promise<string[]>;
@@ -185,6 +202,9 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
     revokeInvite: (inviteId) => request("DELETE", `/invites/${inviteId}`),
     acceptInvite: (token) => request("POST", "/invites/accept", { token }),
     home: (groupId) => request("GET", `/groups/${groupId}/home`),
+    findings: (approachId) => request("GET", `/approaches/${approachId}/findings`),
+    saveFinding: (fragmentId, input) => request("PUT", `/findings/${fragmentId}`, input),
+    removeFinding: (fragmentId) => request("DELETE", `/findings/${fragmentId}`),
     completeSession: (sessionId, attendeeIds) => request("POST", `/sessions/${sessionId}/complete`, { attendeeIds }),
     attendees: (sessionId) => request("GET", `/sessions/${sessionId}/attendees`),
     setAttendees: (sessionId, attendeeIds) => request("PUT", `/sessions/${sessionId}/attendees`, { attendeeIds }),

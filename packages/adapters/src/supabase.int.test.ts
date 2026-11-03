@@ -19,6 +19,9 @@ import {
   createSession,
   getProject,
   getMyHome,
+  listFragments,
+  removeFragment,
+  saveFragment,
   setApproachNote,
   listAttendees,
   markCompleted,
@@ -43,6 +46,7 @@ import {
 } from "@art-flux/core";
 import { SupabaseGroupsRepo } from "./groups";
 import { SupabaseApproachesRepo } from "./approaches";
+import { SupabaseFindingsRepo } from "./findings";
 import { SupabaseInvitesRepo } from "./invites";
 import { SupabaseProjectsRepo } from "./projects";
 import { SupabaseSessionsRepo } from "./sessions";
@@ -69,6 +73,7 @@ function depsFor(db: SupabaseClient, clk = clock) {
     projects: new SupabaseProjectsRepo(db),
     sessions: new SupabaseSessionsRepo(db),
     approaches: new SupabaseApproachesRepo(db),
+    findings: new SupabaseFindingsRepo(db),
     clock: clk,
     tokens: randomTokenGenerator,
   };
@@ -121,6 +126,9 @@ afterAll(async () => {
     const sessionIds = (held ?? []).map((s) => s.id);
     if (sessionIds.length) {
       await admin.from("attendees").delete().in("session_id", sessionIds);
+      const { data: mine } = await admin.from("approaches").select("id").in("session_id", sessionIds);
+      const approachIds = (mine ?? []).map((a) => a.id);
+      if (approachIds.length) await admin.from("finding_fragments").delete().in("approach_id", approachIds);
       await admin.from("approaches").delete().in("session_id", sessionIds);
     }
     await admin.from("sessions").delete().eq("group_id", id);
@@ -668,5 +676,74 @@ describe("approach note on Supabase", () => {
     ).rejects.toBeInstanceOf(ConflictError);
     const viaFunction = await db.ana!.rpc("set_approach_note", { p_approach: approach.id, p_note: "Tarde" });
     expect(viaFunction.error).not.toBeNull();
+  });
+});
+
+describe("findings on Supabase (HU-12)", () => {
+  async function heldApproach() {
+    const g = await newGroup(`Hallazgos ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    const session = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id });
+    const approach = await addApproach(ana.deps, { id: randomUUID(), sessionId: session.id, userId: ana.id, text: "Análisis" });
+    return { g, session, approach };
+  }
+  const save = (actor: typeof owner, approachId: string, text: string, id = randomUUID(), kind = "found") =>
+    saveFragment(actor.deps, { id, approachId, userId: actor.id, kind, text });
+
+  it("members write fragments after the session was held; each is edited only by its author; saving twice is harmless", async () => {
+    const { session, approach, g } = await heldApproach();
+    await expect(save(ana, approach.id, "Antes de tiempo")).rejects.toBeInstanceOf(ConflictError);
+    await markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [ana.id] });
+
+    const id = randomUUID();
+    await save(ana, approach.id, "Acciones claras", id);
+    await save(ana, approach.id, "Acciones claras y separadas", id); // autosave: same id
+    await save(owner, approach.id, "Faltó el étude", randomUUID(), "missing");
+    const list = await listFragments(owner.deps, { approachId: approach.id, userId: owner.id });
+    expect(list.map((f) => [f.authorId, f.kind, f.text])).toEqual([
+      [ana.id, "found", "Acciones claras y separadas"],
+      [owner.id, "missing", "Faltó el étude"],
+    ]);
+
+    await expect(save(owner, approach.id, "Pisado", id)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(removeFragment(owner.deps, { fragmentId: id, userId: owner.id })).rejects.toBeInstanceOf(ForbiddenError);
+
+    // The home counts it: the only approach has a finding, so nothing is left to record.
+    const home = await getMyHome(ana.deps, { groupId: g.id, userId: ana.id });
+    expect(home.toRecord).toEqual([]);
+    await removeFragment(ana.deps, { fragmentId: id, userId: ana.id });
+    expect((await listFragments(ana.deps, { approachId: approach.id, userId: ana.id })).map((f) => f.authorId)).toEqual([owner.id]);
+  });
+
+  it("the database refuses what bypasses the core: other authors, planned sessions, direct edits and deletes, outsiders", async () => {
+    const { session, approach } = await heldApproach();
+    const row = (author: string, id = randomUUID()) => ({
+      id, approach_id: approach.id, author_id: author, kind: "found", text: "x",
+    });
+
+    const early = await db.ana!.from("finding_fragments").insert(row(ana.id)); // session still planned
+    expect(early.error).not.toBeNull();
+
+    await markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [] });
+    const asOther = await db.ana!.from("finding_fragments").insert(row(owner.id)); // pretending to be someone else
+    expect(asOther.error).not.toBeNull();
+    const fromOutside = await db.intruder!.from("finding_fragments").insert(row(intruder.id));
+    expect(fromOutside.error).not.toBeNull();
+
+    const mine = row(ana.id);
+    expect((await db.ana!.from("finding_fragments").insert(mine)).error).toBeNull();
+    const edited = await db.owner!.from("finding_fragments").update({ text: "ajeno" }).eq("id", mine.id).select();
+    expect(edited.data ?? []).toEqual([]); // RLS: not their row, nothing changes
+    const moved = await db.ana!.from("finding_fragments").update({ kind: "missing" }).eq("id", mine.id);
+    expect(moved.error).not.toBeNull(); // only the text is writable
+    const softDeleted = await db.ana!.from("finding_fragments").update({ deleted_at: new Date().toISOString() }).eq("id", mine.id);
+    expect(softDeleted.error).not.toBeNull();
+    const removeOther = await db.owner!.rpc("remove_finding_fragment", { p_fragment: mine.id });
+    expect(removeOther.error).not.toBeNull();
+
+    const seenByOutsider = await db.intruder!.from("finding_fragments").select("id").eq("approach_id", approach.id);
+    expect(seenByOutsider.data ?? []).toEqual([]);
+    await expect(listFragments(intruder.deps, { approachId: approach.id, userId: intruder.id })).rejects.toBeInstanceOf(NotFoundError);
   });
 });

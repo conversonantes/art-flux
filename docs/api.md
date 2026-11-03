@@ -80,6 +80,15 @@ Siempre `{ "error": "<código>", "message": "<texto en español listo para mostr
 | `GET /sessions/:sessionId/attendees` | miembro | Ids de quienes estuvieron |
 | `PUT /sessions/:sessionId/attendees` | miembro | Corrige quiénes estuvieron (`attendeeIds`). 409 si la sesión aún no se realizó |
 
+### Hallazgos (HU-12)
+| Método y ruta | Quién | Qué hace |
+| --- | --- | --- |
+| `GET /approaches/:approachId/findings` | miembro | Fragmentos del hallazgo, del más viejo al más nuevo (`id`, `authorId`, `kind` = `found` | `missing`, `text`) |
+| `PUT /findings/:fragmentId` | miembro | Crea el fragmento o, si el `id` ya existe, cambia su texto (guardado automático y reintentos). Cuerpo: `approachId`, `kind`, `text` (1–4000, con marcas `**negrita**`, `==resaltado==`, `- lista`). 409 si la sesión aún no se realizó o si cambia el `kind`; 403 si el fragmento es de otra persona |
+| `DELETE /findings/:fragmentId` | solo el autor | Quitar (borrado suave) |
+
+Además, `GET /groups/:groupId/home` ahora devuelve `toRecord` como `{ session, total, done, pendingOwnerIds }` (solo sesiones realizadas con planteamientos sin hallazgo) y `mine` incluye `order` (el «P3» de cada planteamiento) y los planteamientos míos de sesiones realizadas sin hallazgo.
+
 ## Cómo agregar una ruta
 
 1. El caso de uso va en `packages/core` (con su prueba); la ruta solo lee la petición, llama al caso de uso y devuelve el resultado.

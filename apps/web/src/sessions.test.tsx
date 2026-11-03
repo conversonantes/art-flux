@@ -124,7 +124,8 @@ describe("sessions on screen", () => {
   it("lists the group's own sessions on the group page", async () => {
     open("/conversonantes", withSessions());
     expect(await screen.findByRole("heading", { name: "Sesiones del grupo" })).toBeInTheDocument();
-    expect(await screen.findAllByRole("link", { name: /reencuentro/i })).toHaveLength(2); // upcoming + the group list
+    // upcoming + the group list (the home loads a moment after the page)
+    await waitFor(() => expect(screen.getAllByRole("link", { name: /reencuentro/i })).toHaveLength(2));
     expect(screen.getByRole("link", { name: /\+ nueva sesión/i })).toBeInTheDocument();
   });
 });
@@ -185,11 +186,27 @@ describe("HU-09 · inicio «lo mío»", () => {
     expect(history.location.pathname).toBe("/conversonantes/cristina/s02"); // a project session
   });
 
-  it("lists held sessions under «Falta registrar»", async () => {
-    open("/conversonantes", seededProject("member", { sessions: cristinaSessions }));
+  it("lists held sessions with approaches still without a finding under «Falta registrar», with the progress", async () => {
+    const approaches = [
+      { id: "k-1", sessionId: "c-1", position: 1, text: "Calentamiento", ownerId: "manu", createdBy: "me", createdAt: "2026-10-20T10:00:00Z" },
+      { id: "k-2", sessionId: "c-1", position: 2, text: "Impro", ownerId: "kokoro", createdBy: "me", createdAt: "2026-10-20T10:01:00Z" },
+      { id: "k-3", sessionId: "c-1", position: 3, text: "Análisis", ownerId: "me", createdBy: "me", createdAt: "2026-10-20T10:02:00Z" },
+    ];
+    const findings = [
+      { id: "f-1", approachId: "k-3", authorId: "me", kind: "found" as const, text: "Algo", createdAt: "2026-10-21T10:00:00Z", updatedAt: "2026-10-21T10:00:00Z" },
+    ];
+    open("/conversonantes", seededProject("member", { sessions: cristinaSessions, approaches, findings }));
     const record = (await screen.findByRole("heading", { name: "Falta registrar" })).closest("section")!;
     expect(within(record).getByText("realizada")).toBeInTheDocument();
     expect(within(record).getByRole("link", { name: /reencuentro/i })).toBeInTheDocument();
+    expect(within(record).getByText(/1 de 3 hallazgos · faltan Manu y Kokoro/)).toBeInTheDocument();
+    expect(within(record).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+  });
+
+  it("does not list a held session without approaches, nor one whose approaches all have a finding", async () => {
+    open("/conversonantes", seededProject("member", { sessions: cristinaSessions }));
+    expect(await screen.findByText(/nada pendiente por ahora|próximas sesiones/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Falta registrar" })).not.toBeInTheDocument();
   });
 
   it("says so when there is nothing pending", async () => {

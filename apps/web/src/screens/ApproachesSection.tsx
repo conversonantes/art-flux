@@ -11,9 +11,11 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent, type ReactNode } from "react";
 import type { ApproachDto, MemberDto } from "../api/api";
 import { reorderIds } from "../approachOrder";
+import { approachSlug } from "../sessionFormat";
 import { Avatar, Button, Chip, ErrorNote, Mono, TextButton } from "../ui";
 import { useApproaches } from "./useApproaches";
 
@@ -216,6 +218,7 @@ function ApproachRow({
   onEdit,
   onRemove,
   note,
+  findingTo,
 }: {
   approach: ApproachDto;
   index: number;
@@ -225,6 +228,8 @@ function ApproachRow({
   onEdit: () => void;
   onRemove: () => void;
   note: ReactNode;
+  /** Where this approach's finding is written; set once the session was held. */
+  findingTo: string | undefined;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: approach.id,
@@ -256,6 +261,11 @@ function ApproachRow({
             <span className="mr-2 font-mono text-base text-gris">{label(index)}</span>
             {approach.text}
           </p>
+          {findingTo && (
+            <Link to={findingTo} className="-ml-2 mt-1 inline-flex min-h-tactil items-center px-2 text-base font-semibold text-verde">
+              Hallazgo ›
+            </Link>
+          )}
           {editable && (
             <div className="-ml-2 mt-1 flex gap-1">
               <TextButton onClick={onEdit} disabled={busy} aria-label={`Editar ${label(index)}`} className="!text-base">
@@ -283,12 +293,15 @@ export function ApproachesSection({
   members,
   currentUserId,
   editable,
+  findingPath,
 }: {
   sessionId: string;
   members: MemberDto[];
   currentUserId: string;
   /** False once the session was held: planning is read-only then. */
   editable: boolean;
+  /** The session's address (e.g. /grupo/obra/s02); with it each held approach links to its finding. */
+  findingPath?: string;
 }) {
   const { list, add, update, remove, reorder, setNote } = useApproaches(sessionId);
   const [adding, setAdding] = useState(false);
@@ -378,6 +391,7 @@ export function ApproachesSection({
                   busy={busy}
                   onEdit={() => setEditingId(a.id)}
                   onRemove={() => remove.mutate(a.id)}
+                  findingTo={!editable && findingPath ? `${findingPath}/${approachSlug(index + 1)}` : undefined}
                   note={
                     <NoteBlock
                       approach={a}

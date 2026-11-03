@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   InMemoryApproachesRepo,
+  InMemoryFindingsRepo,
   InMemoryGroupsRepo,
   InMemoryInvitesRepo,
   InMemoryProjectsRepo,
@@ -18,7 +19,8 @@ function setup() {
   const projects = new InMemoryProjectsRepo();
   const sessionsRepo = new InMemorySessionsRepo(projects);
   const approaches = new InMemoryApproachesRepo();
-  const deps = { groups, invites, projects, sessions: sessionsRepo, approaches, clock, tokens: randomTokenGenerator };
+  const findings = new InMemoryFindingsRepo();
+  const deps = { groups, invites, projects, sessions: sessionsRepo, approaches, findings, clock, tokens: randomTokenGenerator };
   const sessions: Record<string, string> = { "tok-owner": "owner", "tok-ana": "ana", "tok-luis": "luis" };
   const app = createApp({
     authenticator: {
@@ -432,5 +434,61 @@ describe("approach note «cómo lo planteo»", () => {
 
     const cleared = await (await call("tok-ana", "PUT", url, { note: "" })).json();
     expect(cleared.note).toBeUndefined();
+  });
+});
+
+describe("findings (HU-12)", () => {
+  async function heldApproach() {
+    const s = setup();
+    const group = await (await s.call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await s.call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await s.call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    const session = await (await s.call("tok-ana", "POST", `/groups/${group.id}/sessions`, {})).json();
+    const approach = await (await s.call("tok-ana", "POST", `/sessions/${session.id}/approaches`, { text: "Análisis" })).json();
+    return { ...s, session, approach, url: `/approaches/${approach.id}/findings` };
+  }
+  const complete = (call: ReturnType<typeof setup>["call"], sessionId: string) =>
+    call("tok-ana", "POST", `/sessions/${sessionId}/complete`, { attendeeIds: [] });
+
+  it("writes, edits and removes fragments of a held session; the list shows their authors", async () => {
+    const { call, session, approach, url } = await heldApproach();
+    const f1 = randomUUID();
+    const body = { approachId: approach.id, kind: "found", text: "Acciones claras" };
+
+    expect((await call("tok-ana", "PUT", `/findings/${f1}`, body)).status).toBe(409); // not held yet
+    await complete(call, session.id);
+
+    const created = await call("tok-ana", "PUT", `/findings/${f1}`, body);
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({ id: f1, authorId: "ana", kind: "found", text: "Acciones claras" });
+    await call("tok-ana", "PUT", `/findings/${f1}`, { ...body, text: "Acciones claras y separadas" });
+    await call("tok-owner", "PUT", `/findings/${randomUUID()}`, { approachId: approach.id, kind: "missing", text: "Faltó el étude" });
+
+    const list = await (await call("tok-ana", "GET", url)).json();
+    expect(list.map((f: { authorId: string; text: string }) => [f.authorId, f.text])).toEqual([
+      ["ana", "Acciones claras y separadas"],
+      ["owner", "Faltó el étude"],
+    ]);
+
+    expect((await call("tok-ana", "DELETE", `/findings/${f1}`)).status).toBe(204);
+    expect((await call("tok-ana", "DELETE", `/findings/${f1}`)).status).toBe(404);
+    expect(await (await call("tok-ana", "GET", url)).json()).toHaveLength(1);
+  });
+
+  it("only the author changes or removes a fragment; outsiders and bad input are refused", async () => {
+    const { call, session, approach, url } = await heldApproach();
+    await complete(call, session.id);
+    const f1 = randomUUID();
+    const body = { approachId: approach.id, kind: "found", text: "Mío" };
+    await call("tok-ana", "PUT", `/findings/${f1}`, body);
+
+    expect((await call("tok-owner", "PUT", `/findings/${f1}`, { ...body, text: "Pisado" })).status).toBe(403);
+    expect((await call("tok-owner", "DELETE", `/findings/${f1}`)).status).toBe(403);
+    expect((await call("tok-luis", "GET", url)).status).toBe(404);
+    expect((await call("tok-luis", "PUT", `/findings/${randomUUID()}`, body)).status).toBe(404);
+    expect((await call("tok-ana", "PUT", `/findings/${randomUUID()}`, { ...body, text: "  " })).status).toBe(400);
+    expect((await call("tok-ana", "PUT", `/findings/${randomUUID()}`, { ...body, kind: "otro" })).status).toBe(400);
+    expect((await call("tok-ana", "PUT", "/findings/no-uuid", body)).status).toBe(400);
+    expect((await call("tok-ana", "PUT", `/findings/${randomUUID()}`, { ...body, approachId: "no-uuid" })).status).toBe(400);
   });
 });

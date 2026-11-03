@@ -2,8 +2,8 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useApi } from "../api/ApiProvider";
-import type { ProjectDto, SessionDto } from "../api/api";
-import { formatSessionDate, sessionLabel, sessionSlug } from "../sessionFormat";
+import type { MemberDto, ProjectDto, SessionDto } from "../api/api";
+import { approachSlug, formatSessionDate, sessionLabel, sessionSlug } from "../sessionFormat";
 import { ErrorNote, Mono, Tag } from "../ui";
 
 /** A project session lives under its project; a group session right under the group. */
@@ -11,15 +11,26 @@ function SessionLink({
   handle,
   projectSlug,
   session,
+  order,
   className,
   children,
 }: {
   handle: string;
   projectSlug: string | undefined;
   session: SessionDto;
+  /** The "P3" of an approach: the link goes to its finding instead of to the session. */
+  order?: number;
   className: string;
   children: ReactNode;
 }) {
+  if (order !== undefined) {
+    const path = `/${handle}/${projectSlug ? `${projectSlug}/` : ""}${sessionSlug(session.number)}/${approachSlug(order)}`;
+    return (
+      <Link to={path} className={className}>
+        {children}
+      </Link>
+    );
+  }
   return projectSlug ? (
     <Link
       to="/$handle/$slug/$session"
@@ -38,18 +49,20 @@ function SessionLink({
 interface Props {
   group: { id: string; handle: string };
   projects: ProjectDto[] | undefined;
+  members: MemberDto[] | undefined;
 }
 
 /** HU-09: "lo mío" — what is left to record, what I bring, and the sessions coming up. */
-export function GroupHome({ group, projects }: Props) {
+export function GroupHome({ group, projects, members }: Props) {
   const api = useApi();
   const home = useQuery({ queryKey: ["home", group.id], queryFn: () => api.home(group.id) });
 
   const slugOf = (s: SessionDto) => projects?.find((p) => p.id === s.projectId)?.slug;
   /** "cristina · S02", or just "S02" for a group session. */
   const where = (s: SessionDto) => [slugOf(s), sessionLabel(s.number)].filter(Boolean).join(" · ");
-  const link = (s: SessionDto, className: string, children: ReactNode) => (
-    <SessionLink handle={group.handle} projectSlug={slugOf(s)} session={s} className={className}>
+  const nameOf = (userId: string) => members?.find((m) => m.userId === userId)?.displayName ?? "alguien";
+  const link = (s: SessionDto, className: string, children: ReactNode, order?: number) => (
+    <SessionLink handle={group.handle} projectSlug={slugOf(s)} session={s} {...(order === undefined ? {} : { order })} className={className}>
       {children}
     </SessionLink>
   );
@@ -81,7 +94,7 @@ export function GroupHome({ group, projects }: Props) {
             <Mono>{toRecord.length === 1 ? "1 sesión" : `${toRecord.length} sesiones`}</Mono>
           </div>
           <ul className="mt-3 space-y-3">
-            {toRecord.map((s) => (
+            {toRecord.map(({ session: s, total, done, pendingOwnerIds }) => (
               <li key={s.id}>
                 {link(
                   s,
@@ -92,6 +105,20 @@ export function GroupHome({ group, projects }: Props) {
                       <Mono>{where(s)}</Mono>
                     </span>
                     <span className="mt-2 block text-xl font-bold">{s.objective ?? "Sin objetivo todavía"}</span>
+                    <span
+                      role="progressbar"
+                      aria-label="Hallazgos escritos"
+                      aria-valuemin={0}
+                      aria-valuemax={total}
+                      aria-valuenow={done}
+                      className="mt-3 block h-2 overflow-hidden rounded-full bg-linea"
+                    >
+                      <span className="block h-full bg-grafito" style={{ width: `${(done / total) * 100}%` }} />
+                    </span>
+                    <span className="mt-2 block text-base text-gris">
+                      {done} de {total} {total === 1 ? "hallazgo" : "hallazgos"} · {pendingOwnerIds.length === 1 ? "falta" : "faltan"}{" "}
+                      {pendingOwnerIds.map(nameOf).join(" y ")}
+                    </span>
                   </>,
                 )}
               </li>
@@ -107,7 +134,7 @@ export function GroupHome({ group, projects }: Props) {
             <Mono>{mine.length}</Mono>
           </div>
           <ul className="mt-2 border-t border-linea">
-            {mine.map(({ approach, session }) => (
+            {mine.map(({ approach, session, order }) => (
               <li key={approach.id} className="border-b border-linea">
                 {link(
                   session,
@@ -115,10 +142,14 @@ export function GroupHome({ group, projects }: Props) {
                   <>
                     <span className="flex-1">
                       <span className="block text-xl font-bold">{approach.text}</span>
-                      <Mono>{where(session)}</Mono>
+                      <Mono>
+                        {where(session)}
+                        {session.status === "completed" ? ` · P${order} · falta el hallazgo` : ""}
+                      </Mono>
                     </span>
                     <span aria-hidden className="text-2xl">›</span>
                   </>,
+                  session.status === "completed" ? order : undefined,
                 )}
               </li>
             ))}

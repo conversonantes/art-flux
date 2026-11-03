@@ -93,7 +93,7 @@ export function GroupScreen() {
         <Lead>Esto es lo que te toca.</Lead>
       </div>
 
-      <GroupHome group={group} projects={projects.data} />
+      <GroupHome group={group} projects={projects.data} members={members.data} />
 
       <section className="mt-8">
         <div className="flex items-center justify-between border-b border-linea pb-2">

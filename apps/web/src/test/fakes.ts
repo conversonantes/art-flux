@@ -3,6 +3,7 @@ import {
   ApiError,
   type Api,
   type ApproachDto,
+  type FindingFragmentDto,
   type GroupDto,
   type InviteDto,
   type MemberDto,
@@ -47,6 +48,7 @@ export function fakeApi(
     team?: Record<string, TeamMemberDto[]>;
     sessions?: SessionDto[];
     approaches?: ApproachDto[];
+    findings?: FindingFragmentDto[];
   } = {},
 ) {
   const state = {
@@ -59,6 +61,7 @@ export function fakeApi(
     sessions: (seed.sessions ?? []).map((s) => ({ ...s })),
     approaches: (seed.approaches ?? []).map((a) => ({ ...a })),
     attendees: {} as Record<string, string[]>,
+    findings: (seed.findings ?? []).map((x) => ({ ...x })),
     /** Make the next reorder fail the way the server would (e.g. a 409). */
     reorderError: null as ApiError | null,
   };
@@ -117,17 +120,49 @@ export function fakeApi(
     }),
     home: vi.fn(async (groupId) => {
       const sessions = state.sessions.filter((s) => s.groupId === groupId);
-      const planned = sessions.filter((s) => s.status === "planned");
-      const mine = planned.flatMap((session) =>
-        approachesOf(session.id)
-          .filter((a) => a.ownerId === "me")
-          .map((approach) => ({ approach, session })),
+      const hasFinding = (approachId: string) => state.findings.some((x) => x.approachId === approachId);
+      const toRecord = sessions
+        .filter((s) => s.status === "completed")
+        .flatMap((session) => {
+          const own = approachesOf(session.id);
+          const pending = own.filter((a) => !hasFinding(a.id));
+          return pending.length === 0
+            ? []
+            : [{ session, total: own.length, done: own.length - pending.length, pendingOwnerIds: [...new Set(pending.map((a) => a.ownerId))] }];
+        });
+      const mine = sessions.flatMap((session) =>
+        approachesOf(session.id).flatMap((approach, index) =>
+          approach.ownerId === "me" && (session.status === "planned" || !hasFinding(approach.id))
+            ? [{ approach, session, order: index + 1 }]
+            : [],
+        ),
       );
+      const planned = sessions.filter((s) => s.status === "planned");
       return {
-        toRecord: sessions.filter((s) => s.status === "completed"),
+        toRecord,
         mine,
         upcoming: planned.map((session) => ({ session, approachCount: approachesOf(session.id).length })),
       };
+    }),
+    findings: vi.fn(async (approachId) => state.findings.filter((x) => x.approachId === approachId)),
+    saveFinding: vi.fn(async (fragmentId, input) => {
+      const existing = state.findings.find((x) => x.id === fragmentId);
+      const now = new Date().toISOString();
+      if (existing) {
+        if (existing.authorId !== "me") throw new ApiError(403, "forbidden", "Solo quien lo escribió puede cambiarlo");
+        existing.text = input.text;
+        existing.updatedAt = now;
+        return { ...existing };
+      }
+      const fragment: FindingFragmentDto = { id: fragmentId, approachId: input.approachId, authorId: "me", kind: input.kind, text: input.text, createdAt: now, updatedAt: now };
+      state.findings.push(fragment);
+      return { ...fragment };
+    }),
+    removeFinding: vi.fn(async (fragmentId) => {
+      const existing = state.findings.find((x) => x.id === fragmentId);
+      if (!existing) throw new ApiError(404, "not_found", "No encontramos ese fragmento");
+      if (existing.authorId !== "me") throw new ApiError(403, "forbidden", "Solo quien lo escribió puede quitarlo");
+      state.findings = state.findings.filter((x) => x.id !== fragmentId);
     }),
     completeSession: vi.fn(async (sessionId, attendeeIds) => {
       const session = state.sessions.find((s) => s.id === sessionId);
@@ -298,7 +333,7 @@ export const cristina: ProjectDto = {
 /** A group with an admin (me), two members and the project "Cristina" with a small team. */
 export function seededProject(
   role: "admin" | "member" = "admin",
-  extra: { sessions?: SessionDto[]; approaches?: ApproachDto[] } = {},
+  extra: { sessions?: SessionDto[]; approaches?: ApproachDto[]; findings?: FindingFragmentDto[] } = {},
 ) {
   return fakeApi({
     ...extra,

@@ -14,7 +14,7 @@ import { LoginScreen } from "./screens/LoginScreen";
 import { NewGroupScreen } from "./screens/NewGroupScreen";
 import { NewProjectScreen } from "./screens/NewProjectScreen";
 import { NewSessionScreen } from "./screens/NewSessionScreen";
-import { ProjectOrGroupSessionRoute, ProjectSessionRoute } from "./screens/SessionRoutes";
+import { ProjectOrGroupSessionRoute, ProjectApproachRoute, ProjectSessionRoute } from "./screens/SessionRoutes";
 import { RequireAuth } from "./screens/RequireAuth";
 import { TeamScreen } from "./screens/TeamScreen";
 
@@ -50,6 +50,7 @@ const routeTree = root.addChildren([
   protectedRoute("/$handle/$slug/editar", EditProjectScreen),
   protectedRoute("/$handle/$slug/equipo", TeamScreen),
   protectedRoute("/$handle/$slug/$session", ProjectSessionRoute),
+  protectedRoute("/$handle/$slug/$session/$approach", ProjectApproachRoute),
 ]);
 
 export function createAppRouter(history?: RouterHistory) {

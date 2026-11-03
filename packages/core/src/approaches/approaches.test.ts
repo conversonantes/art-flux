@@ -3,6 +3,7 @@ import {
   ConflictError,
   ForbiddenError,
   InMemoryApproachesRepo,
+  InMemoryFindingsRepo,
   InMemoryGroupsRepo,
   InMemoryProjectsRepo,
   InMemorySessionsRepo,
@@ -25,7 +26,8 @@ async function setup() {
   const projects = new InMemoryProjectsRepo();
   const sessions = new InMemorySessionsRepo(projects);
   const approaches = new InMemoryApproachesRepo();
-  const deps = { groups, projects, sessions, approaches, clock };
+  const findings = new InMemoryFindingsRepo();
+  const deps = { groups, projects, sessions, approaches, findings, clock };
   await createGroup({ groups, clock }, { id: "g1", userId: "admin", name: "Conversonantes" });
   groups.members.push({ groupId: "g1", userId: "ana", role: "member" });
   groups.members.push({ groupId: "g1", userId: "manu", role: "member" });
