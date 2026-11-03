@@ -1,9 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
-import { randomTokenGenerator, type AppDeps, type AuthSession, type Authenticator } from "@art-flux/core";
+import {
+  randomTokenGenerator,
+  type AppDeps,
+  type AuthSession,
+  type Authenticator,
+  type FileStore,
+} from "@art-flux/core";
 import { SupabaseApproachesRepo } from "./approaches";
 import { SupabaseFindingsRepo } from "./findings";
 import { SupabaseGroupsRepo } from "./groups";
 import { SupabaseInvitesRepo } from "./invites";
+import { SupabaseMediaRepo } from "./media";
 import { SupabaseProjectsRepo } from "./projects";
 import { SupabaseSessionsRepo } from "./sessions";
 
@@ -22,8 +29,9 @@ export interface Wiring {
  * Wires the core to Supabase. Only the *anon* key lives here: every request gets a client
  * carrying the user's own JWT (the session credential), so RLS applies even if a route has
  * a bug. The service_role key is deliberately never used on a request path.
+ * `files` is where the files live (R2 in production): chosen by whoever composes the app.
  */
-export function supabaseWiring(env: SupabaseEnv): Wiring {
+export function supabaseWiring(env: SupabaseEnv, files: FileStore): Wiring {
   const base = { auth: { persistSession: false, autoRefreshToken: false } };
   const anon = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, base);
   const clock = { now: () => new Date() };
@@ -48,6 +56,8 @@ export function supabaseWiring(env: SupabaseEnv): Wiring {
         sessions: new SupabaseSessionsRepo(db),
         approaches: new SupabaseApproachesRepo(db),
         findings: new SupabaseFindingsRepo(db),
+        media: new SupabaseMediaRepo(db),
+        files,
         clock,
         tokens: randomTokenGenerator,
       };

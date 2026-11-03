@@ -4,6 +4,8 @@ import { useApi } from "../api/ApiProvider";
 import { formatSessionDate, sessionLabel, sessionSlug } from "../sessionFormat";
 import { Avatar, BackLink, ErrorNote, Loading, Mono, Page, Tag } from "../ui";
 import { STATUS_LABEL, rolesText } from "../projectLabels";
+import { useSession } from "../auth/AuthProvider";
+import { MediaList } from "./MediaList";
 import { useProject } from "./useProject";
 
 /** HU-05 / HU-06: the project's page. Sessions and counters arrive with HU-07 onwards. */
@@ -11,6 +13,7 @@ export function ProjectScreen() {
   const { handle = "", slug = "" } = useParams({ strict: false }) as { handle?: string; slug?: string };
   const { groups, group, members, role, project, team } = useProject(handle, slug);
   const api = useApi();
+  const { user } = useSession();
   const sessions = useQuery({
     queryKey: ["sessions", group?.id, project.data?.id],
     queryFn: () => api.sessions(group!.id, { project: project.data!.id }),
@@ -145,6 +148,31 @@ export function ProjectScreen() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold">Material</h2>
+          <Link
+            to="/$handle/registrar"
+            params={{ handle }}
+            search={{ obra: p.id }}
+            className="inline-flex min-h-tactil items-center px-2 text-lg font-semibold text-verde"
+          >
+            + Registrar
+          </Link>
+        </div>
+        <p className="mt-1 text-base text-gris">Lo que se registra sin sesión queda aquí, para ordenarlo después.</p>
+        <div className="mt-3">
+          <MediaList
+            projectId={p.id}
+            members={members.data ?? []}
+            currentUserId={user.id}
+            isAdmin={isAdmin}
+            unassignedOnly
+            label="Material de la obra"
+          />
+        </div>
       </section>
 
       <section className="mt-8">

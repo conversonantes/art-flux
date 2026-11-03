@@ -6,6 +6,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ConflictError,
+  InMemoryFileStore,
   ForbiddenError,
   InviteInvalidError,
   NotFoundError,
@@ -19,6 +20,11 @@ import {
   createSession,
   getProject,
   getMyHome,
+  confirmUpload,
+  getMediaUrl,
+  listMedia,
+  registerMedia,
+  removeMedia,
   listFragments,
   removeFragment,
   saveFragment,
@@ -47,6 +53,8 @@ import {
 import { SupabaseGroupsRepo } from "./groups";
 import { SupabaseApproachesRepo } from "./approaches";
 import { SupabaseFindingsRepo } from "./findings";
+import { R2FileStore } from "./r2";
+import { SupabaseMediaRepo } from "./media";
 import { SupabaseInvitesRepo } from "./invites";
 import { SupabaseProjectsRepo } from "./projects";
 import { SupabaseSessionsRepo } from "./sessions";
@@ -58,6 +66,7 @@ const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
 });
 
 const clock = { now: () => new Date() };
+const files = new InMemoryFileStore(); // stands for R2 in the Supabase tests; the real R2 has its own test
 const run = randomUUID().slice(0, 8);
 
 interface Actor {
@@ -74,6 +83,8 @@ function depsFor(db: SupabaseClient, clk = clock) {
     sessions: new SupabaseSessionsRepo(db),
     approaches: new SupabaseApproachesRepo(db),
     findings: new SupabaseFindingsRepo(db),
+    media: new SupabaseMediaRepo(db),
+    files,
     clock: clk,
     tokens: randomTokenGenerator,
   };
@@ -118,6 +129,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const id of groupIds) {
+    await admin.from("media").delete().eq("group_id", id); // it points at projects, sessions and approaches
     const { data: owned } = await admin.from("projects").select("id").eq("group_id", id);
     const projectIds = (owned ?? []).map((p) => p.id);
     // projects.origin_session_id and sessions.project_id point at each other: break the cycle first.
@@ -745,5 +757,112 @@ describe("findings on Supabase (HU-12)", () => {
     const seenByOutsider = await db.intruder!.from("finding_fragments").select("id").eq("approach_id", approach.id);
     expect(seenByOutsider.data ?? []).toEqual([]);
     await expect(listFragments(intruder.deps, { approachId: approach.id, userId: intruder.id })).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("material on Supabase (HU-13)", () => {
+  async function inObra() {
+    const g = await newGroup(`Material ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    const project = await createProject(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id, title: "Cristina" });
+    const other = await createProject(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id, title: "Otra" });
+    const session = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id, projectId: project.id });
+    const elsewhere = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id, projectId: other.id });
+    const approach = await addApproach(ana.deps, { id: randomUUID(), sessionId: session.id, userId: ana.id, text: "Calentamiento" });
+    return { g, project, session, elsewhere, approach };
+  }
+  const photo = { kind: "photo", mime: "image/jpeg", sizeBytes: 4000, title: "Parada de cabeza" } as const;
+  const register = (actor: typeof owner, projectId: string, material: Parameters<typeof registerMedia>[1]["material"], where: object = {}) =>
+    registerMedia(actor.deps, { id: randomUUID(), projectId, userId: actor.id, material, ...where });
+
+  it("a member registers a photo (pending), confirms it, and the group reads it; links and notes are ready at once", async () => {
+    const { project, session, approach } = await inObra();
+    const { media, upload } = await register(ana, project.id, photo, { approachId: approach.id });
+    expect(media).toMatchObject({ status: "pending", sessionId: session.id, approachId: approach.id });
+    expect(upload?.method).toBe("PUT");
+
+    // A pending upload belongs to its author alone; nobody else can open it yet.
+    expect(await listMedia(owner.deps, { projectId: project.id, userId: owner.id })).toEqual([]);
+    await expect(confirmUpload(ana.deps, { mediaId: media.id, userId: ana.id })).rejects.toBeInstanceOf(ConflictError); // not in the store yet
+
+    files.put(media.path!, 4000);
+    expect((await confirmUpload(ana.deps, { mediaId: media.id, userId: ana.id })).status).toBe("uploaded");
+    const seen = await listMedia(owner.deps, { projectId: project.id, userId: owner.id, approachId: approach.id });
+    expect(seen.map((m) => m.id)).toEqual([media.id]);
+    expect((await getMediaUrl(owner.deps, { mediaId: media.id, userId: owner.id })).url).toContain(media.path!);
+
+    const link = await register(ana, project.id, { kind: "link", url: "https://youtu.be/abc" });
+    expect(link.media.status).toBe("uploaded");
+    expect((await register(ana, project.id, { kind: "note", body: "Salió bien" })).media.body).toBe("Salió bien");
+  });
+
+  it("the author or an admin removes it; another member cannot", async () => {
+    const { project } = await inObra();
+    const mine = (await register(ana, project.id, { kind: "note", body: "Mía" })).media;
+    const theirs = (await register(owner, project.id, { kind: "note", body: "De la admin" })).media;
+    await expect(removeMedia(ana.deps, { mediaId: theirs.id, userId: ana.id })).rejects.toBeInstanceOf(ForbiddenError);
+    await removeMedia(owner.deps, { mediaId: mine.id, userId: owner.id }); // admin, someone else's
+    expect((await listMedia(ana.deps, { projectId: project.id, userId: ana.id })).map((m) => m.id)).toEqual([theirs.id]);
+    expect((await db.ana!.rpc("remove_media", { p_media: theirs.id })).error).not.toBeNull(); // bypassing the core
+  });
+
+  it("the database refuses what bypasses the core: other authors, other groups, mismatched sessions, direct edits", async () => {
+    const { g, project, session, elsewhere } = await inObra();
+    const row = (extra: object = {}) => ({
+      id: randomUUID(), group_id: g.id, project_id: project.id, kind: "note", body: "x", status: "uploaded", created_by: ana.id, ...extra,
+    });
+    const file = { kind: "photo", path: "x", mime: "image/jpeg", size_bytes: 10, body: null };
+
+    expect((await db.ana!.from("media").insert(row())).error).toBeNull();
+    expect((await db.ana!.from("media").insert(row({ created_by: owner.id }))).error).not.toBeNull(); // as someone else
+    expect((await db.intruder!.from("media").insert(row({ created_by: intruder.id }))).error).not.toBeNull(); // not in the group
+    expect((await db.ana!.from("media").insert(row({ session_id: elsewhere.id }))).error).not.toBeNull(); // session of another obra
+    expect((await db.ana!.from("media").insert(row({ session_id: session.id }))).error).toBeNull(); // its own
+    expect((await db.ana!.from("media").insert(row({ ...file, status: "uploaded" }))).error).not.toBeNull(); // a file must start pending
+    expect((await db.ana!.from("media").insert(row({ kind: "note", body: "   " }))).error).not.toBeNull();
+    expect((await db.ana!.from("media").insert(row({ ...file, status: "pending", size_bytes: 99_999_999 }))).error).not.toBeNull(); // too big
+
+    const mine = row({ ...file, status: "pending", path: `grupos/${g.id}/obras/${project.id}/zz.jpg` });
+    expect((await db.ana!.from("media").insert(mine)).error).toBeNull();
+    expect((await db.ana!.from("media").update({ status: "uploaded" }).eq("id", mine.id)).error).not.toBeNull(); // only through confirm_media
+    expect((await db.owner!.rpc("confirm_media", { p_media: mine.id })).error).not.toBeNull(); // not the author
+    expect((await db.owner!.from("media").select("id").eq("id", mine.id)).data ?? []).toEqual([]); // pending: only the author sees it
+    expect((await db.intruder!.from("media").select("id").eq("project_id", project.id)).data ?? []).toEqual([]);
+    expect((await db.ana!.rpc("confirm_media", { p_media: mine.id })).error).toBeNull();
+    await expect(
+      registerMedia(intruder.deps, { id: randomUUID(), projectId: project.id, userId: intruder.id, material: photo }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+// The real bucket: signs, uploads one small object with the signed address, reads it back, deletes it.
+const r2Env = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"].map((k) => process.env[k]);
+describe.skipIf(r2Env.some((v) => !v))("R2 (HU-13)", () => {
+  it("uploads with a signed address, checks size, reads with a signed address, and deletes", async () => {
+    const [accountId, accessKeyId, secretAccessKey, bucket] = r2Env as string[];
+    const store = new R2FileStore({ accountId: accountId!, accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey!, bucket: bucket! });
+    const path = `pruebas/${run}/hola.txt`;
+    const body = "hola desde art-flux";
+
+    try {
+      expect(await store.head(path)).toBeNull();
+      const upload = await store.signUpload({ path, mime: "text/plain", sizeBytes: body.length });
+      const put = await fetch(upload.url, { method: upload.method, headers: upload.headers, body });
+      expect(put.status).toBe(200);
+      expect(await store.head(path)).toEqual({ sizeBytes: body.length });
+
+      const download = await store.signDownload(path, 60);
+      expect(await (await fetch(download.url)).text()).toBe(body);
+
+      // The signature covers the size: an upload of another size is rejected.
+      const other = await store.signUpload({ path: `${path}.otro`, mime: "text/plain", sizeBytes: 3 });
+      const bad = await fetch(other.url, { method: "PUT", headers: other.headers, body: "demasiado largo" });
+      expect(bad.ok).toBe(false);
+    } finally {
+      await store.delete(path);
+      await store.delete(`${path}.otro`);
+    }
+    expect(await store.head(path)).toBeNull();
   });
 });

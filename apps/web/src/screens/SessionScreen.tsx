@@ -4,6 +4,7 @@ import { useApi } from "../api/ApiProvider";
 import { useSession } from "../auth/AuthProvider";
 import { ApproachesSection } from "./ApproachesSection";
 import { AttendanceSection } from "./AttendanceSection";
+import { MediaList } from "./MediaList";
 import { formatSessionDate, isPastDate, sessionLabel, sessionSlug } from "../sessionFormat";
 import { BackLink, ErrorNote, Loading, Mono, Page, Tag } from "../ui";
 import { useGroup } from "./useGroup";
@@ -14,7 +15,7 @@ import { useGroup } from "./useGroup";
  */
 export function SessionScreen({ handle, projectSlug, number }: { handle: string; projectSlug?: string; number: number }) {
   const api = useApi();
-  const { groups, group, members } = useGroup(handle);
+  const { groups, group, members, role } = useGroup(handle);
   const { user } = useSession();
 
   const session = useQuery({
@@ -75,6 +76,39 @@ export function SessionScreen({ handle, projectSlug, number }: { handle: string;
       />
 
       <AttendanceSection session={s} members={members.data ?? []} label={sessionLabel(s.number)} />
+
+      <section className="mt-8">
+        <div className="flex items-center justify-between border-b border-linea pb-2">
+          <h2 className="text-xl font-bold">Material</h2>
+          {s.projectId && (
+            <Link
+              to="/$handle/registrar"
+              params={{ handle }}
+              search={{ obra: s.projectId, sesion: s.id }}
+              className="inline-flex min-h-tactil items-center px-2 text-lg font-semibold text-verde"
+            >
+              + Registrar
+            </Link>
+          )}
+        </div>
+        {s.projectId ? (
+          <div className="mt-3">
+            <MediaList
+              projectId={s.projectId}
+              sessionId={s.id}
+              members={members.data ?? []}
+              currentUserId={user.id}
+              isAdmin={role === "admin"}
+              label="Material de la sesión"
+            />
+          </div>
+        ) : (
+          <p className="py-3 text-lg text-gris">
+            Las fotos, audios y archivos se registran dentro de una obra. Cuando esta sesión sea parte de una, podrás
+            registrar aquí.
+          </p>
+        )}
+      </section>
     </Page>
   );
 }

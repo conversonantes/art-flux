@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   InMemoryApproachesRepo,
+  InMemoryFileStore,
   InMemoryFindingsRepo,
+  InMemoryMediaRepo,
   InMemoryGroupsRepo,
   InMemoryInvitesRepo,
   InMemoryProjectsRepo,
@@ -20,7 +22,9 @@ function setup() {
   const sessionsRepo = new InMemorySessionsRepo(projects);
   const approaches = new InMemoryApproachesRepo();
   const findings = new InMemoryFindingsRepo();
-  const deps = { groups, invites, projects, sessions: sessionsRepo, approaches, findings, clock, tokens: randomTokenGenerator };
+  const media = new InMemoryMediaRepo();
+  const files = new InMemoryFileStore();
+  const deps = { groups, invites, projects, sessions: sessionsRepo, approaches, findings, media, files, clock, tokens: randomTokenGenerator };
   const sessions: Record<string, string> = { "tok-owner": "owner", "tok-ana": "ana", "tok-luis": "luis" };
   const app = createApp({
     authenticator: {
@@ -37,7 +41,7 @@ function setup() {
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-  return { call };
+  return { call, files };
 }
 
 describe("auth", () => {
@@ -490,5 +494,69 @@ describe("findings (HU-12)", () => {
     expect((await call("tok-ana", "PUT", `/findings/${randomUUID()}`, { ...body, kind: "otro" })).status).toBe(400);
     expect((await call("tok-ana", "PUT", "/findings/no-uuid", body)).status).toBe(400);
     expect((await call("tok-ana", "PUT", `/findings/${randomUUID()}`, { ...body, approachId: "no-uuid" })).status).toBe(400);
+  });
+});
+
+describe("material (HU-13)", () => {
+  async function inObra() {
+    const s = setup();
+    const group = await (await s.call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await s.call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await s.call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    const project = await (await s.call("tok-owner", "POST", `/groups/${group.id}/projects`, { title: "Cristina" })).json();
+    const session = await (await s.call("tok-ana", "POST", `/groups/${group.id}/sessions`, { projectId: project.id })).json();
+    const approach = await (await s.call("tok-ana", "POST", `/sessions/${session.id}/approaches`, { text: "Calentamiento" })).json();
+    return { ...s, group, project, session, approach, url: `/projects/${project.id}/media` };
+  }
+
+  it("registers a photo, uploads it (the phone, here the store), confirms it and reads it back", async () => {
+    const { call, files, url, session, approach } = await inObra();
+    const id = randomUUID();
+    const registered = await call("tok-ana", "POST", url, {
+      id, kind: "photo", mime: "image/jpeg", sizeBytes: 5000, title: "Parada de cabeza", sessionId: session.id, approachId: approach.id,
+    });
+    expect(registered.status).toBe(201);
+    const { media, upload } = await registered.json();
+    expect(media).toMatchObject({ id, status: "pending", sessionId: session.id, approachId: approach.id });
+    expect(upload).toMatchObject({ method: "PUT", url: expect.stringContaining(media.path) });
+
+    expect((await call("tok-ana", "POST", `/media/${id}/confirm`)).status).toBe(409); // not uploaded yet
+    files.put(media.path, 5000);
+    const confirmed = await call("tok-ana", "POST", `/media/${id}/confirm`);
+    expect(confirmed.status).toBe(200);
+    expect(await confirmed.json()).toMatchObject({ status: "uploaded" });
+
+    expect((await (await call("tok-owner", "GET", `${url}?approach=${approach.id}`)).json()).map((m: { id: string }) => m.id)).toEqual([id]);
+    const read = await (await call("tok-owner", "GET", `/media/${id}/url`)).json();
+    expect(read.url).toContain(media.path);
+  });
+
+  it("links and notes are ready at once; the author or an admin removes; outsiders see nothing", async () => {
+    const { call, url } = await inObra();
+    const link = await (await call("tok-ana", "POST", url, { kind: "link", url: "https://youtu.be/abc", title: "Ensayo" })).json();
+    expect(link.upload).toBeUndefined();
+    expect(link.media).toMatchObject({ kind: "link", status: "uploaded" });
+    const note = await (await call("tok-ana", "POST", url, { kind: "note", body: "Salió bien" })).json();
+
+    expect(await (await call("tok-owner", "GET", `/media/${link.media.id}/url`)).json()).toEqual({ url: "https://youtu.be/abc" });
+    expect((await call("tok-luis", "GET", url)).status).toBe(404);
+    expect((await call("tok-luis", "GET", `/media/${link.media.id}/url`)).status).toBe(404);
+
+    expect((await call("tok-owner", "DELETE", `/media/${note.media.id}`)).status).toBe(204); // admin, someone else's
+    expect((await call("tok-ana", "DELETE", `/media/${note.media.id}`)).status).toBe(404);
+    expect((await (await call("tok-owner", "GET", url)).json()).map((m: { id: string }) => m.id)).toEqual([link.media.id]);
+  });
+
+  it("validates what is sent and refuses what does not belong to the obra", async () => {
+    const { call, url, project } = await inObra();
+    expect((await call("tok-ana", "POST", url, { kind: "photo", mime: "application/pdf", sizeBytes: 10 })).status).toBe(400);
+    expect((await call("tok-ana", "POST", url, { kind: "photo", mime: "image/jpeg", sizeBytes: 99_000_000 })).status).toBe(400);
+    expect((await call("tok-ana", "POST", url, { kind: "link", url: "javascript:alert(1)" })).status).toBe(400);
+    expect((await call("tok-ana", "POST", url, { kind: "note", body: " " })).status).toBe(400);
+    expect((await call("tok-ana", "POST", url, { kind: "note", body: "x", sessionId: "no-uuid" })).status).toBe(400);
+    expect((await call("tok-ana", "POST", url, { kind: "note", body: "x", sessionId: randomUUID() })).status).toBe(404);
+    expect((await call("tok-luis", "POST", url, { kind: "note", body: "x" })).status).toBe(404);
+    expect((await call("tok-ana", "POST", "/projects/no-uuid/media", { kind: "note", body: "x" })).status).toBe(400);
+    expect((await call("tok-ana", "GET", `/projects/${project.id}/media?session=no-uuid`)).status).toBe(400);
   });
 });

@@ -15,6 +15,7 @@ import { NewGroupScreen } from "./screens/NewGroupScreen";
 import { NewProjectScreen } from "./screens/NewProjectScreen";
 import { NewSessionScreen } from "./screens/NewSessionScreen";
 import { ProjectOrGroupSessionRoute, ProjectApproachRoute, ProjectSessionRoute } from "./screens/SessionRoutes";
+import { RegisterRoute } from "./screens/RegisterScreen";
 import { RequireAuth } from "./screens/RequireAuth";
 import { TeamScreen } from "./screens/TeamScreen";
 
@@ -44,6 +45,7 @@ const routeTree = root.addChildren([
   protectedRoute("/$handle/obras/nueva", NewProjectScreen),
   // Project slugs can never be "invitar", "obras", "nueva", "editar" or "equipo" (RESERVED_PROJECT_SLUGS).
   protectedRoute("/$handle/sesiones/nueva", NewSessionScreen),
+  protectedRoute("/$handle/registrar", RegisterRoute),
   // /<group>/s02 is a group session; any other single segment is a project (see SessionRoutes).
   protectedRoute("/$handle/$slug", ProjectOrGroupSessionRoute),
   protectedRoute("/$handle/$slug/sesiones/nueva", NewSessionScreen),

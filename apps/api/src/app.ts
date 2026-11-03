@@ -14,19 +14,24 @@ import {
   createInvite,
   createProjectWithOrigin,
   createSession,
+  getMediaUrl,
   getMyHome,
   getProject,
   getSession,
   listApproaches,
   listFragments,
   listAttendees,
+  listMedia,
   listInvites,
   listMembers,
   listMyGroups,
   listProjects,
   listSessions,
   listTeam,
+  confirmUpload,
   markCompleted,
+  registerMedia,
+  removeMedia,
   removeApproach,
   removeFragment,
   removeFromTeam,
@@ -43,6 +48,7 @@ import {
   type AppDeps,
   type Authenticator,
   type CreateProjectInput,
+  type RegisterMediaInput,
   type AuthSession,
   type UpdateProjectInput,
   type UpdateSessionInput,
@@ -336,6 +342,55 @@ export function createApp(options: AppOptions) {
   app.delete("/findings/:fragmentId", async (c) => {
     const fragmentId = uuid.parse(c.req.param("fragmentId"));
     await removeFragment(c.get("deps"), { fragmentId, userId: c.get("session").userId });
+    return c.body(null, 204);
+  });
+
+  // Material (HU-13) ----------------------------------------------------------------------
+  // Registers material in an obra. Files answer with where to upload them; links and notes are done.
+  app.post("/projects/:projectId/media", async (c) => {
+    const projectId = uuid.parse(c.req.param("projectId"));
+    const { id, sessionId, approachId, ...material } = await jsonBody(c.req.raw);
+    const result = await registerMedia(c.get("deps"), {
+      id: id === undefined ? randomUUID() : uuid.parse(id),
+      projectId,
+      userId: c.get("session").userId,
+      ...(sessionId == null ? {} : { sessionId: uuid.parse(sessionId) }),
+      ...(approachId == null ? {} : { approachId: uuid.parse(approachId) }),
+      material: material as RegisterMediaInput,
+    });
+    return c.json(result, 201);
+  });
+
+  // The phone says the file reached the store; the core checks it is really there.
+  app.post("/media/:mediaId/confirm", async (c) => {
+    const mediaId = uuid.parse(c.req.param("mediaId"));
+    return c.json(await confirmUpload(c.get("deps"), { mediaId, userId: c.get("session").userId }));
+  });
+
+  // ?session=<id> or ?approach=<id> narrow it; with neither, everything of the obra.
+  app.get("/projects/:projectId/media", async (c) => {
+    const projectId = uuid.parse(c.req.param("projectId"));
+    const session = c.req.query("session");
+    const approach = c.req.query("approach");
+    return c.json(
+      await listMedia(c.get("deps"), {
+        projectId,
+        userId: c.get("session").userId,
+        ...(session ? { sessionId: uuid.parse(session) } : {}),
+        ...(approach ? { approachId: uuid.parse(approach) } : {}),
+      }),
+    );
+  });
+
+  // A short-lived address to open it (signed for files).
+  app.get("/media/:mediaId/url", async (c) => {
+    const mediaId = uuid.parse(c.req.param("mediaId"));
+    return c.json(await getMediaUrl(c.get("deps"), { mediaId, userId: c.get("session").userId }));
+  });
+
+  app.delete("/media/:mediaId", async (c) => {
+    const mediaId = uuid.parse(c.req.param("mediaId"));
+    await removeMedia(c.get("deps"), { mediaId, userId: c.get("session").userId });
     return c.body(null, 204);
   });
 

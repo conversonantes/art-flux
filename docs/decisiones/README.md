@@ -13,6 +13,7 @@ Cada archivo explica **una** decisión: qué se decidió, por qué y qué consec
 | [0007](0007-sesion-realizada-y-asistentes.md) | Sesión realizada y asistentes: cualquier miembro, en un solo paso | Vigente |
 | [0008](0008-nota-del-responsable.md) | Nota «cómo lo planteo»: la lee el grupo, la escribe el responsable | Vigente |
 | [0009](0009-hallazgos-por-fragmentos.md) | Hallazgos por fragmentos con autor, marcas simples, edita solo el autor | Vigente |
+| [0010](0010-material-en-r2.md) | Material: archivos en R2 con subida directa y firmada; siempre dentro de una obra | Vigente |
 
 ## Cómo agregar una
 

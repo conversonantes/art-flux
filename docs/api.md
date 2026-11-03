@@ -89,6 +89,15 @@ Siempre `{ "error": "<código>", "message": "<texto en español listo para mostr
 
 Además, `GET /groups/:groupId/home` ahora devuelve `toRecord` como `{ session, total, done, pendingOwnerIds }` (solo sesiones realizadas con planteamientos sin hallazgo) y `mine` incluye `order` (el «P3» de cada planteamiento) y los planteamientos míos de sesiones realizadas sin hallazgo.
 
+### Material (HU-13)
+| Método y ruta | Quién | Qué hace |
+| --- | --- | --- |
+| `POST /projects/:projectId/media` | miembro | Registra material en la obra. Cuerpo: `id?` (UUID del cliente: repetirlo es un reintento), `kind` (`photo` | `audio` | `document` | `link` | `note`), `sessionId?`, `approachId?`, y según el tipo: `mime`, `sizeBytes` (y `durationSeconds` en audio), `url` o `body`; `title?`. Responde `{ media, upload? }`: los archivos traen la URL firmada para subir directo a R2 (`PUT`, 10 min); los enlaces y notas ya quedan listos. 400 si el tipo, el tamaño o el enlace no sirven; 404 si la sesión o el planteamiento no son de la obra |
+| `POST /media/:mediaId/confirm` | solo quien lo subió | Confirma que el archivo llegó; el `core` verifica con R2 que exista y pese lo prometido. 409 si aún no llegó o llegó incompleto |
+| `GET /projects/:projectId/media?session=&approach=` | miembro | Material de la obra, o solo de una sesión o un planteamiento, del más nuevo al más viejo. Lo que aún se sube solo lo ve su autor |
+| `GET /media/:mediaId/url` | miembro | Dirección para abrirlo: firmada por 5 minutos para archivos; el enlace mismo para enlaces. 409 si es una nota o aún se sube |
+| `DELETE /media/:mediaId` | autor o admin | Quitar (borrado suave; el archivo se limpia después de 30 días) |
+
 ## Cómo agregar una ruta
 
 1. El caso de uso va en `packages/core` (con su prueba); la ruta solo lee la petición, llama al caso de uso y devuelve el resultado.

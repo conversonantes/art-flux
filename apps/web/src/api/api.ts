@@ -64,6 +64,51 @@ export interface ApproachDto {
   createdAt: string;
 }
 
+export const MEDIA_KINDS = ["photo", "audio", "document", "link", "note"] as const;
+export type MediaKind = (typeof MEDIA_KINDS)[number];
+
+/** Material of an obra (HU-13): a file in R2, a link or a written note. */
+export interface MediaDto {
+  id: string;
+  groupId: string;
+  projectId: string;
+  sessionId?: string;
+  approachId?: string;
+  kind: MediaKind;
+  title?: string;
+  mime?: string;
+  sizeBytes?: number;
+  durationSeconds?: number;
+  url?: string;
+  body?: string;
+  /** A file is "pending" until its upload is confirmed. */
+  status: "pending" | "uploaded";
+  createdBy: string;
+  createdAt: string;
+}
+
+/** What to send to register material; files carry their size and type, the bytes go to `upload`. */
+export interface MediaInput {
+  id: string;
+  kind: MediaKind;
+  title?: string;
+  mime?: string;
+  sizeBytes?: number;
+  durationSeconds?: number;
+  url?: string;
+  body?: string;
+  sessionId?: string;
+  approachId?: string;
+}
+
+/** Where the phone uploads a file (signed by the API; the bytes never pass through it). */
+export interface UploadDto {
+  url: string;
+  method: "PUT";
+  headers: Record<string, string>;
+  expiresAt: string;
+}
+
 /** One person's contribution to the finding of an approach (HU-12). */
 export interface FindingFragmentDto {
   id: string;
@@ -141,6 +186,14 @@ export interface Api {
   revokeInvite(inviteId: string): Promise<void>;
   acceptInvite(token: string): Promise<GroupDto>;
   home(groupId: string): Promise<HomeDto>;
+  registerMedia(projectId: string, input: MediaInput): Promise<{ media: MediaDto; upload?: UploadDto }>;
+  confirmMedia(mediaId: string): Promise<MediaDto>;
+  /** An obra's material, or only a session's or an approach's. */
+  projectMedia(projectId: string, scope?: { sessionId?: string; approachId?: string }): Promise<MediaDto[]>;
+  mediaUrl(mediaId: string): Promise<{ url: string; expiresAt?: string }>;
+  removeMedia(mediaId: string): Promise<void>;
+  /** Sends the file straight to the store with the signed address; `onProgress` gets 0..1. */
+  uploadFile(upload: UploadDto, file: Blob, onProgress: (fraction: number) => void): Promise<void>;
   findings(approachId: string): Promise<FindingFragmentDto[]>;
   /** Creates the fragment or, if the id exists, edits its text (autosave, retries). Only its author may. */
   saveFinding(fragmentId: string, input: { approachId: string; kind: FindingFragmentDto["kind"]; text: string }): Promise<FindingFragmentDto>;
@@ -202,6 +255,28 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
     revokeInvite: (inviteId) => request("DELETE", `/invites/${inviteId}`),
     acceptInvite: (token) => request("POST", "/invites/accept", { token }),
     home: (groupId) => request("GET", `/groups/${groupId}/home`),
+    registerMedia: (projectId, input) => request("POST", `/projects/${projectId}/media`, input),
+    confirmMedia: (mediaId) => request("POST", `/media/${mediaId}/confirm`),
+    projectMedia: (projectId, scope) => {
+      const params = new URLSearchParams();
+      if (scope?.sessionId) params.set("session", scope.sessionId);
+      if (scope?.approachId) params.set("approach", scope.approachId);
+      const query = params.size ? `?${params}` : "";
+      return request("GET", `/projects/${projectId}/media${query}`);
+    },
+    mediaUrl: (mediaId) => request("GET", `/media/${mediaId}/url`),
+    removeMedia: (mediaId) => request("DELETE", `/media/${mediaId}`),
+    uploadFile: (upload, file, onProgress) =>
+      // XMLHttpRequest, because fetch cannot report how much of an upload has gone out.
+      new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(upload.method, upload.url);
+        for (const [name, value] of Object.entries(upload.headers)) xhr.setRequestHeader(name, value);
+        xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("No se pudo subir el archivo. Intenta de nuevo.")));
+        xhr.onerror = () => reject(new Error("No se pudo subir el archivo. Revisa tu conexión e intenta de nuevo."));
+        xhr.send(file);
+      }),
     findings: (approachId) => request("GET", `/approaches/${approachId}/findings`),
     saveFinding: (fragmentId, input) => request("PUT", `/findings/${fragmentId}`, input),
     removeFinding: (fragmentId) => request("DELETE", `/findings/${fragmentId}`),

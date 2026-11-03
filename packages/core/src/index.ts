@@ -6,5 +6,6 @@ export * from "./projects";
 export * from "./sessions";
 export * from "./approaches";
 export * from "./findings";
+export * from "./media";
 export * from "./home";
 export * from "./deps";

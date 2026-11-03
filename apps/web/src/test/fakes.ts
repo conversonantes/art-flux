@@ -4,6 +4,7 @@ import {
   type Api,
   type ApproachDto,
   type FindingFragmentDto,
+  type MediaDto,
   type GroupDto,
   type InviteDto,
   type MemberDto,
@@ -49,6 +50,7 @@ export function fakeApi(
     sessions?: SessionDto[];
     approaches?: ApproachDto[];
     findings?: FindingFragmentDto[];
+    media?: MediaDto[];
   } = {},
 ) {
   const state = {
@@ -61,6 +63,9 @@ export function fakeApi(
     sessions: (seed.sessions ?? []).map((s) => ({ ...s })),
     approaches: (seed.approaches ?? []).map((a) => ({ ...a })),
     attendees: {} as Record<string, string[]>,
+    media: (seed.media ?? []).map((m) => ({ ...m })),
+    /** Make the next file upload fail, the way a bad connection would. */
+    uploadError: null as Error | null,
     findings: (seed.findings ?? []).map((x) => ({ ...x })),
     /** Make the next reorder fail the way the server would (e.g. a 409). */
     reorderError: null as ApiError | null,
@@ -143,6 +148,69 @@ export function fakeApi(
         mine,
         upcoming: planned.map((session) => ({ session, approachCount: approachesOf(session.id).length })),
       };
+    }),
+    registerMedia: vi.fn(async (projectId, input) => {
+      const existing = state.media.find((m) => m.id === input.id);
+      const isFile = input.kind === "photo" || input.kind === "audio" || input.kind === "document";
+      const upload = { url: `https://files.test/${input.id}`, method: "PUT" as const, headers: {}, expiresAt: new Date(Date.now() + 6e5).toISOString() };
+      if (existing) return { media: { ...existing }, ...(existing.status === "pending" ? { upload } : {}) };
+      const project = state.projects.find((p) => p.id === projectId);
+      if (!project) throw new ApiError(404, "not_found", "No encontramos esa obra");
+      const sessionId = input.sessionId ?? state.approaches.find((a) => a.id === input.approachId)?.sessionId;
+      const media: MediaDto = {
+        id: input.id,
+        groupId: project.groupId,
+        projectId,
+        ...(sessionId ? { sessionId } : {}),
+        ...(input.approachId ? { approachId: input.approachId } : {}),
+        kind: input.kind,
+        ...(input.title ? { title: input.title } : {}),
+        ...(input.mime ? { mime: input.mime } : {}),
+        ...(input.sizeBytes ? { sizeBytes: input.sizeBytes } : {}),
+        ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}),
+        ...(input.url ? { url: input.url } : {}),
+        ...(input.body ? { body: input.body } : {}),
+        status: isFile ? "pending" : "uploaded",
+        createdBy: "me",
+        createdAt: new Date().toISOString(),
+      };
+      state.media.push(media);
+      return { media: { ...media }, ...(isFile ? { upload } : {}) };
+    }),
+    confirmMedia: vi.fn(async (mediaId) => {
+      const media = state.media.find((m) => m.id === mediaId);
+      if (!media) throw new ApiError(404, "not_found", "No encontramos ese material");
+      media.status = "uploaded";
+      return { ...media };
+    }),
+    projectMedia: vi.fn(async (projectId, scope) =>
+      state.media
+        .filter(
+          (m) =>
+            m.projectId === projectId &&
+            (m.status === "uploaded" || m.createdBy === "me") &&
+            (!scope?.sessionId || m.sessionId === scope.sessionId) &&
+            (!scope?.approachId || m.approachId === scope.approachId),
+        )
+        .map((m) => ({ ...m }))
+        .reverse(),
+    ),
+    mediaUrl: vi.fn(async (mediaId) => {
+      const media = state.media.find((m) => m.id === mediaId);
+      if (!media) throw new ApiError(404, "not_found", "No encontramos ese material");
+      return { url: media.url ?? `https://files.test/${media.id}` };
+    }),
+    removeMedia: vi.fn(async (mediaId) => {
+      state.media = state.media.filter((m) => m.id !== mediaId);
+    }),
+    uploadFile: vi.fn(async (_upload, _file, onProgress) => {
+      onProgress(0.5);
+      if (state.uploadError) {
+        const error = state.uploadError;
+        state.uploadError = null;
+        throw error;
+      }
+      onProgress(1);
     }),
     findings: vi.fn(async (approachId) => state.findings.filter((x) => x.approachId === approachId)),
     saveFinding: vi.fn(async (fragmentId, input) => {
@@ -333,7 +401,7 @@ export const cristina: ProjectDto = {
 /** A group with an admin (me), two members and the project "Cristina" with a small team. */
 export function seededProject(
   role: "admin" | "member" = "admin",
-  extra: { sessions?: SessionDto[]; approaches?: ApproachDto[]; findings?: FindingFragmentDto[] } = {},
+  extra: { sessions?: SessionDto[]; approaches?: ApproachDto[]; findings?: FindingFragmentDto[]; media?: MediaDto[] } = {},
 ) {
   return fakeApi({
     ...extra,

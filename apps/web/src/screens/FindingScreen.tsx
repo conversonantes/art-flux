@@ -8,6 +8,7 @@ import { applyMark, type Mark } from "../findingText";
 import { sessionLabel, sessionSlug } from "../sessionFormat";
 import { BackLink, Button, ErrorNote, Loading, Mono, Page, TextButton, personColor } from "../ui";
 import { FindingText } from "./FindingText";
+import { MediaList } from "./MediaList";
 import { useGroup } from "./useGroup";
 
 /** How long to wait after the last keystroke before saving by itself. */
@@ -222,7 +223,7 @@ export function FindingScreen({
   const api = useApi();
   const navigate = useNavigate();
   const { user } = useSession();
-  const { groups, group, members } = useGroup(handle);
+  const { groups, group, members, role } = useGroup(handle);
   const saving = useIsMutating({ mutationKey: ["finding"] });
 
   const sessionPath = projectSlug ? `/${handle}/${projectSlug}/${sessionSlug(number)}` : `/${handle}/${sessionSlug(number)}`;
@@ -306,6 +307,31 @@ export function FindingScreen({
               <KindSection kind="missing" title="Qué faltó" approachId={approach.id} fragments={fragments.data} members={members.data ?? []} meId={user.id} />
               <AuthorLegend fragments={fragments.data} members={members.data ?? []} />
             </>
+          )}
+          {session.data.projectId && (
+            <section className="mt-8">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Material</h2>
+                <Link
+                  to="/$handle/registrar"
+                  params={{ handle }}
+                  search={{ obra: session.data.projectId, sesion: session.data.id, planteamiento: approach.id }}
+                  className="inline-flex min-h-tactil items-center px-2 text-lg font-semibold text-verde"
+                >
+                  + Registrar
+                </Link>
+              </div>
+              <div className="mt-3">
+                <MediaList
+                  projectId={session.data.projectId}
+                  approachId={approach.id}
+                  members={members.data ?? []}
+                  currentUserId={user.id}
+                  isAdmin={role === "admin"}
+                  label="Material del planteamiento"
+                />
+              </div>
+            </section>
           )}
           <div className="mt-8">
             <Button onClick={() => void navigate({ to: sessionPath })}>Listo</Button>

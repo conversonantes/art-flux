@@ -17,6 +17,7 @@ export const MAX_ROLES = 6;
 
 const RESERVED_PROJECT_WORDS: ReadonlySet<string> = new Set([
   "invitar",
+  "registrar",
   "obras",
   "nueva",
   "editar",

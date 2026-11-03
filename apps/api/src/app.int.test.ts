@@ -6,12 +6,13 @@ import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "./app";
 import { supabaseWiring } from "@art-flux/adapters";
+import { InMemoryFileStore } from "@art-flux/core";
 
 process.loadEnvFile("../../.env");
 const url = process.env.SUPABASE_URL!;
 const anonKey = process.env.SUPABASE_ANON_KEY!;
 const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-const app = createApp(supabaseWiring({ SUPABASE_URL: url, SUPABASE_ANON_KEY: anonKey }));
+const app = createApp(supabaseWiring({ SUPABASE_URL: url, SUPABASE_ANON_KEY: anonKey }, new InMemoryFileStore()));
 const run = randomUUID().slice(0, 8);
 
 interface Actor {
