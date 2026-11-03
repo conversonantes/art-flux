@@ -72,6 +72,13 @@ Siempre `{ "error": "<código>", "message": "<texto en español listo para mostr
 | --- | --- | --- |
 | `GET /groups/:groupId/home` | miembro | `{ toRecord, mine, upcoming }`: sesiones realizadas por registrar, mis planteamientos en sesiones planeadas y las sesiones planeadas (con su número de planteamientos), las más próximas primero. 404 si no es del grupo |
 
+### Sesión realizada y asistentes (HU-11)
+| Método y ruta | Quién | Qué hace |
+| --- | --- | --- |
+| `POST /sessions/:sessionId/complete` | miembro | Pasa de *planeada* a *realizada* con `attendeeIds` (miembros del grupo; puede ir vacía). 409 si ya estaba realizada; 403 si alguien no es del grupo |
+| `GET /sessions/:sessionId/attendees` | miembro | Ids de quienes estuvieron |
+| `PUT /sessions/:sessionId/attendees` | miembro | Corrige quiénes estuvieron (`attendeeIds`). 409 si la sesión aún no se realizó |
+
 ## Cómo agregar una ruta
 
 1. El caso de uso va en `packages/core` (con su prueba); la ruta solo lee la petición, llama al caso de uso y devuelve el resultado.

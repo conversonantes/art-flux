@@ -126,6 +126,10 @@ export interface Api {
   revokeInvite(inviteId: string): Promise<void>;
   acceptInvite(token: string): Promise<GroupDto>;
   home(groupId: string): Promise<HomeDto>;
+  /** HU-11: planned → held, with who attended (user ids). */
+  completeSession(sessionId: string, attendeeIds: string[]): Promise<SessionDto>;
+  attendees(sessionId: string): Promise<string[]>;
+  setAttendees(sessionId: string, attendeeIds: string[]): Promise<string[]>;
   projects(groupId: string): Promise<ProjectDto[]>;
   project(groupId: string, slug: string): Promise<ProjectDto>;
   createProject(groupId: string, input: ProjectInput): Promise<ProjectDto>;
@@ -177,6 +181,9 @@ export function createHttpApi(credential: () => Promise<string | null>, baseUrl 
     revokeInvite: (inviteId) => request("DELETE", `/invites/${inviteId}`),
     acceptInvite: (token) => request("POST", "/invites/accept", { token }),
     home: (groupId) => request("GET", `/groups/${groupId}/home`),
+    completeSession: (sessionId, attendeeIds) => request("POST", `/sessions/${sessionId}/complete`, { attendeeIds }),
+    attendees: (sessionId) => request("GET", `/sessions/${sessionId}/attendees`),
+    setAttendees: (sessionId, attendeeIds) => request("PUT", `/sessions/${sessionId}/attendees`, { attendeeIds }),
     projects: (groupId) => request("GET", `/groups/${groupId}/projects`),
     project: (groupId, slug) => request("GET", `/groups/${groupId}/projects/${encodeURIComponent(slug)}`),
     createProject: (groupId, input) => request("POST", `/groups/${groupId}/projects`, input),

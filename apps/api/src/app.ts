@@ -18,12 +18,14 @@ import {
   getProject,
   getSession,
   listApproaches,
+  listAttendees,
   listInvites,
   listMembers,
   listMyGroups,
   listProjects,
   listSessions,
   listTeam,
+  markCompleted,
   removeApproach,
   removeFromTeam,
   reorderApproaches,
@@ -31,6 +33,7 @@ import {
   revokeInvite,
   setTeamRoles,
   updateApproach,
+  updateAttendees,
   updateProject,
   updateSession,
   type AppDeps,
@@ -227,6 +230,26 @@ export function createApp(options: AppOptions) {
     const sessionId = uuid.parse(c.req.param("sessionId"));
     const changes = (await jsonBody(c.req.raw)) as UpdateSessionInput;
     return c.json(await updateSession(c.get("deps"), { sessionId, userId: c.get("session").userId, changes }));
+  });
+
+  // Held sessions (HU-11) ------------------------------------------------------------------
+  app.post("/sessions/:sessionId/complete", async (c) => {
+    const sessionId = uuid.parse(c.req.param("sessionId"));
+    const body = await jsonBody(c.req.raw);
+    const attendeeIds = z.array(uuid).parse(body.attendeeIds);
+    return c.json(await markCompleted(c.get("deps"), { sessionId, userId: c.get("session").userId, attendeeIds }));
+  });
+
+  app.get("/sessions/:sessionId/attendees", async (c) => {
+    const sessionId = uuid.parse(c.req.param("sessionId"));
+    return c.json(await listAttendees(c.get("deps"), { sessionId, userId: c.get("session").userId }));
+  });
+
+  app.put("/sessions/:sessionId/attendees", async (c) => {
+    const sessionId = uuid.parse(c.req.param("sessionId"));
+    const body = await jsonBody(c.req.raw);
+    const attendeeIds = z.array(uuid).parse(body.attendeeIds);
+    return c.json(await updateAttendees(c.get("deps"), { sessionId, userId: c.get("session").userId, attendeeIds }));
   });
 
   // Approaches (HU-08) ---------------------------------------------------------------------

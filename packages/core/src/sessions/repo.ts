@@ -26,4 +26,13 @@ export interface SessionsRepo {
    * `number` and the project remembers it. Throws SessionNumberTakenError.
    */
   attachAsOrigin(sessionId: string, projectId: string, number: number): Promise<Session>;
+  /**
+   * Planned → completed, saving who attended, in one step. Adapters backed by a database
+   * re-check the state there and throw ConflictError if the session was not planned.
+   */
+  complete(sessionId: string, attendeeIds: string[]): Promise<Session>;
+  /** Replaces who attended a completed session. */
+  setAttendees(sessionId: string, attendeeIds: string[]): Promise<void>;
+  /** User ids, in no particular order. */
+  listAttendees(sessionId: string): Promise<string[]>;
 }

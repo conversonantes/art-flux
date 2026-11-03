@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
@@ -197,5 +197,70 @@ describe("HU-09 · inicio «lo mío»", () => {
     expect(await screen.findByText(/nada pendiente por ahora/i)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Falta registrar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "A tu cargo" })).not.toBeInTheDocument();
+  });
+});
+
+describe("HU-11 · marcar realizada", () => {
+  const s2 = () => seededProject("member", { sessions: groupSessions, approaches: approachesOfS2 });
+
+  it("opens the sheet with everyone marked, saves who was there and shows the session as held", async () => {
+    const seeded = s2();
+    open("/conversonantes/s02", seeded);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Marcar realizada" }));
+    const sheet = await screen.findByRole("dialog", { name: "¿Quiénes estuvieron?" });
+    expect(within(sheet).getByText("S02 · planeada → realizada")).toBeInTheDocument();
+    for (const name of ["Santi", "Manu", "Kokoro"]) expect(within(sheet).getByRole("checkbox", { name })).toBeChecked();
+
+    await userEvent.click(within(sheet).getByRole("checkbox", { name: "Kokoro" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Marcar realizada" }));
+
+    expect(await screen.findByRole("heading", { name: "Asistentes" })).toBeInTheDocument();
+    expect(seeded.api.completeSession).toHaveBeenCalledWith("s-2", ["me", "manu"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("realizada")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar realizada" })).not.toBeInTheDocument();
+    const list = screen.getByRole("heading", { name: "Asistentes" }).closest("section")!;
+    expect(within(list).getByText("Manu")).toBeInTheDocument();
+    expect(within(list).queryByText("Kokoro")).not.toBeInTheDocument();
+  });
+
+  it("lets you correct the attendees afterwards", async () => {
+    const seeded = s2();
+    open("/conversonantes/s02", seeded);
+    await userEvent.click(await screen.findByRole("button", { name: "Marcar realizada" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Marcar realizada" }));
+    await screen.findByRole("heading", { name: "Asistentes" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Editar asistentes" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText("S02 · realizada")).toBeInTheDocument();
+    await userEvent.click(within(sheet).getByRole("checkbox", { name: "Manu" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Guardar asistentes" }));
+
+    await waitFor(() => expect(seeded.api.setAttendees).toHaveBeenCalledWith("s-2", ["me", "kokoro"]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("closes the sheet with Cancelar without saving", async () => {
+    const seeded = s2();
+    open("/conversonantes/s02", seeded);
+    await userEvent.click(await screen.findByRole("button", { name: "Marcar realizada" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(seeded.api.completeSession).not.toHaveBeenCalled();
+  });
+
+  it("freezes the approaches once held, and the home moves the session to «Falta registrar»", async () => {
+    const seeded = s2();
+    const { history } = open("/conversonantes/s02", seeded);
+    await userEvent.click(await screen.findByRole("button", { name: "Marcar realizada" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Marcar realizada" }));
+    await screen.findByRole("heading", { name: "Asistentes" });
+    expect(screen.queryByRole("button", { name: /agregar planteamiento/i })).not.toBeInTheDocument();
+
+    await history.push("/conversonantes");
+    const record = (await screen.findByRole("heading", { name: "Falta registrar" })).closest("section")!;
+    expect(within(record).getByRole("link", { name: /explorar el texto/i })).toBeInTheDocument();
   });
 });

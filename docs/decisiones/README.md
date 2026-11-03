@@ -10,7 +10,8 @@ Cada archivo explica **una** decisión: qué se decidió, por qué y qué consec
 | [0004](0004-un-proyecto-supabase-por-ahora.md) | Un solo proyecto de Supabase por ahora | Vigente |
 | [0005](0005-numeracion-de-sesiones-y-origen.md) | Numeración de sesiones por ámbito y obra de origen | Vigente |
 | [0006](0006-escrituras-delicadas-por-funcion-sql.md) | Borrado suave y escrituras delicadas por función SQL | Vigente |
+| [0007](0007-sesion-realizada-y-asistentes.md) | Sesión realizada y asistentes: cualquier miembro, en un solo paso | Vigente |
 
 ## Cómo agregar una
 
-Copia el formato de cualquiera: **Contexto**, **Decisión**, **Consecuencias**. Numera la siguiente (`0007-…`). Si una decisión cambia, no borres la anterior: marca su estado como *Reemplazada por 000N* y escribe la nueva.
+Copia el formato de cualquiera: **Contexto**, **Decisión**, **Consecuencias**. Numera la siguiente (`0008-…`). Si una decisión cambia, no borres la anterior: marca su estado como *Reemplazada por 000N* y escribe la nueva.

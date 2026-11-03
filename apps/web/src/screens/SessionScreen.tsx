@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useApi } from "../api/ApiProvider";
 import { useSession } from "../auth/AuthProvider";
 import { ApproachesSection } from "./ApproachesSection";
+import { AttendanceSection } from "./AttendanceSection";
 import { formatSessionDate, isPastDate, sessionLabel } from "../sessionFormat";
 import { BackLink, ErrorNote, Loading, Mono, Page, Tag } from "../ui";
 import { useGroup } from "./useGroup";
@@ -71,6 +72,8 @@ export function SessionScreen({ handle, projectSlug, number }: { handle: string;
         currentUserId={user.id}
         editable={s.status === "planned"}
       />
+
+      <AttendanceSection session={s} members={members.data ?? []} label={sessionLabel(s.number)} />
     </Page>
   );
 }

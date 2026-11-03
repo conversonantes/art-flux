@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  ConflictError,
   ForbiddenError,
   SessionNumberTakenError,
   type Session,
@@ -129,5 +130,34 @@ export class SupabaseSessionsRepo implements SessionsRepo {
       throw error;
     }
     return toSession(data as SessionRow);
+  }
+
+  /** The functions re-check the state; the core checked already, so a refusal means it changed meanwhile. */
+  private attendeeError(error: { code?: string }): never | void {
+    if (error.code === "P0004") throw new ConflictError("La sesión cambió mientras la editabas. Recárgala e intenta de nuevo.");
+    if (error.code === "P0005") throw new ForbiddenError("Solo pueden asistir personas del grupo");
+  }
+
+  async complete(sessionId: string, attendeeIds: string[]): Promise<Session> {
+    const { data, error } = await this.db.rpc("complete_session", { p_session: sessionId, p_attendees: attendeeIds });
+    if (error) {
+      this.attendeeError(error);
+      throw error;
+    }
+    return toSession(data as SessionRow);
+  }
+
+  async setAttendees(sessionId: string, attendeeIds: string[]): Promise<void> {
+    const { error } = await this.db.rpc("set_attendees", { p_session: sessionId, p_attendees: attendeeIds });
+    if (error) {
+      this.attendeeError(error);
+      throw error;
+    }
+  }
+
+  async listAttendees(sessionId: string): Promise<string[]> {
+    const { data, error } = await this.db.from("attendees").select("user_id").eq("session_id", sessionId);
+    if (error) throw error;
+    return (data as { user_id: string }[]).map((r) => r.user_id);
   }
 }

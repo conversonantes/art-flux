@@ -19,6 +19,9 @@ import {
   createSession,
   getProject,
   getMyHome,
+  listAttendees,
+  markCompleted,
+  updateAttendees,
   getSession,
   listApproaches,
   listInvites,
@@ -115,7 +118,10 @@ afterAll(async () => {
     await admin.from("projects").update({ origin_session_id: null }).eq("group_id", id);
     const { data: held } = await admin.from("sessions").select("id").eq("group_id", id);
     const sessionIds = (held ?? []).map((s) => s.id);
-    if (sessionIds.length) await admin.from("approaches").delete().in("session_id", sessionIds);
+    if (sessionIds.length) {
+      await admin.from("attendees").delete().in("session_id", sessionIds);
+      await admin.from("approaches").delete().in("session_id", sessionIds);
+    }
     await admin.from("sessions").delete().eq("group_id", id);
     if (projectIds.length) await admin.from("project_team").delete().in("project_id", projectIds);
     await admin.from("projects").delete().eq("group_id", id);
@@ -545,7 +551,7 @@ describe("approaches on Supabase (HU-08)", () => {
   it("once the session was held, planning is frozen (core and database)", async () => {
     const { session } = await plannedSession();
     const a = await add(ana, session.id, "Antes");
-    await admin.from("sessions").update({ status: "completed" }).eq("id", session.id); // HU-11 will do this properly
+    await markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [ana.id] });
 
     await expect(add(ana, session.id, "Tarde")).rejects.toBeInstanceOf(ConflictError);
     await expect(
@@ -560,5 +566,59 @@ describe("approaches on Supabase (HU-08)", () => {
     });
     expect(direct.error).not.toBeNull();
     expect(await order(ana, session.id)).toEqual(["Antes"]); // still readable
+  });
+});
+
+describe("held sessions on Supabase (HU-11)", () => {
+  async function plannedSession() {
+    const g = await newGroup(`Realizada ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    const session = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id });
+    return { g, session };
+  }
+
+  it("any member marks it held with attendees; they can be corrected afterwards", async () => {
+    const { session } = await plannedSession();
+    const done = await markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [ana.id, owner.id] });
+    expect(done.status).toBe("completed");
+    expect((await listAttendees(owner.deps, { sessionId: session.id, userId: owner.id })).sort()).toEqual([ana.id, owner.id].sort());
+
+    await updateAttendees(owner.deps, { sessionId: session.id, userId: owner.id, attendeeIds: [owner.id] });
+    expect(await listAttendees(ana.deps, { sessionId: session.id, userId: ana.id })).toEqual([owner.id]);
+    await expect(
+      markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [] }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("an attendee from outside the group is refused and nothing is half-saved (core and database)", async () => {
+    const { session } = await plannedSession();
+    await expect(
+      markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [intruder.id] }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    const direct = await db.ana!.rpc("complete_session", { p_session: session.id, p_attendees: [intruder.id] });
+    expect(direct.error).not.toBeNull();
+    expect((await getSession(ana.deps, { groupId: session.groupId, userId: ana.id, number: session.number })).status).toBe("planned");
+    expect(await listAttendees(ana.deps, { sessionId: session.id, userId: ana.id })).toEqual([]);
+  });
+
+  it("the database refuses what bypasses the core: direct status, direct attendees, outsiders", async () => {
+    const { session } = await plannedSession();
+    const status = await db.ana!.from("sessions").update({ status: "completed" }).eq("id", session.id);
+    expect(status.error).not.toBeNull();
+    const insert = await db.ana!.from("attendees").insert({ session_id: session.id, user_id: ana.id });
+    expect(insert.error).not.toBeNull();
+
+    await expect(
+      markCompleted(intruder.deps, { sessionId: session.id, userId: intruder.id, attendeeIds: [] }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    const outsider = await db.intruder!.rpc("complete_session", { p_session: session.id, p_attendees: [] });
+    expect(outsider.error).not.toBeNull();
+    const early = await db.ana!.rpc("set_attendees", { p_session: session.id, p_attendees: [ana.id] }); // not held yet
+    expect(early.error).not.toBeNull();
+
+    await markCompleted(ana.deps, { sessionId: session.id, userId: ana.id, attendeeIds: [ana.id] });
+    const seen = await db.intruder!.from("attendees").select("user_id").eq("session_id", session.id);
+    expect(seen.data ?? []).toEqual([]);
   });
 });

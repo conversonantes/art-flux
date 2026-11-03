@@ -119,6 +119,55 @@ export async function updateSession(
   return deps.sessions.update(session.id, clean);
 }
 
+async function sessionForMember(deps: SessionDeps, sessionId: string, userId: string): Promise<Session> {
+  const session = await deps.sessions.getById(sessionId);
+  if (!session) throw new NotFoundError("No encontramos esa sesión");
+  await requireMember(deps, session.groupId, userId);
+  return session;
+}
+
+/** Whoever attended must belong to the group; repeated people count once. */
+async function checkAttendees(deps: SessionDeps, groupId: string, attendeeIds: string[]): Promise<string[]> {
+  const unique = [...new Set(attendeeIds)];
+  for (const id of unique) {
+    if ((await deps.groups.getMemberRole(groupId, id)) === null) {
+      throw new ForbiddenError("Solo pueden asistir personas del grupo");
+    }
+  }
+  return unique;
+}
+
+/** HU-11: any member closes the "before" of a planned session and notes who was there. */
+export async function markCompleted(
+  deps: SessionDeps,
+  input: { sessionId: string; userId: string; attendeeIds: string[] },
+): Promise<Session> {
+  const session = await sessionForMember(deps, input.sessionId, input.userId);
+  if (session.status !== "planned") throw new ConflictError("La sesión ya se marcó como realizada");
+  const attendeeIds = await checkAttendees(deps, session.groupId, input.attendeeIds);
+  return deps.sessions.complete(session.id, attendeeIds);
+}
+
+/** HU-11: correct who attended once the session was held. */
+export async function updateAttendees(
+  deps: SessionDeps,
+  input: { sessionId: string; userId: string; attendeeIds: string[] },
+): Promise<string[]> {
+  const session = await sessionForMember(deps, input.sessionId, input.userId);
+  if (session.status !== "completed") throw new ConflictError("La sesión todavía no se ha realizado");
+  const attendeeIds = await checkAttendees(deps, session.groupId, input.attendeeIds);
+  await deps.sessions.setAttendees(session.id, attendeeIds);
+  return attendeeIds;
+}
+
+export async function listAttendees(
+  deps: SessionDeps,
+  input: { sessionId: string; userId: string },
+): Promise<string[]> {
+  const session = await sessionForMember(deps, input.sessionId, input.userId);
+  return deps.sessions.listAttendees(session.id);
+}
+
 /**
  * HU-05: an admin makes a group session the origin of a project. The session joins the
  * project and takes its next number (S01 if it is the first), and the project remembers it.

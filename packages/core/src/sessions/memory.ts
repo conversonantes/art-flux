@@ -1,3 +1,4 @@
+import { ConflictError } from "../errors";
 import type { InMemoryProjectsRepo } from "../projects";
 import type { Session, SessionPatch, SessionScope } from "./session";
 import { SessionNumberTakenError, type SessionsRepo } from "./repo";
@@ -61,5 +62,24 @@ export class InMemorySessionsRepo implements SessionsRepo {
     session.number = number;
     project.originSessionId = sessionId;
     return session;
+  }
+
+  private readonly attendees = new Map<string, string[]>();
+
+  async complete(sessionId: string, attendeeIds: string[]): Promise<Session> {
+    const session = await this.getById(sessionId);
+    if (!session) throw new Error("session not found");
+    if (session.status !== "planned") throw new ConflictError("La sesión ya se realizó");
+    session.status = "completed";
+    this.attendees.set(sessionId, [...new Set(attendeeIds)]);
+    return session;
+  }
+
+  async setAttendees(sessionId: string, attendeeIds: string[]): Promise<void> {
+    this.attendees.set(sessionId, [...new Set(attendeeIds)]);
+  }
+
+  async listAttendees(sessionId: string): Promise<string[]> {
+    return [...(this.attendees.get(sessionId) ?? [])];
   }
 }

@@ -58,6 +58,7 @@ export function fakeApi(
     team: { ...(seed.team ?? {}) } as Record<string, TeamMemberDto[]>,
     sessions: (seed.sessions ?? []).map((s) => ({ ...s })),
     approaches: (seed.approaches ?? []).map((a) => ({ ...a })),
+    attendees: {} as Record<string, string[]>,
     /** Make the next reorder fail the way the server would (e.g. a 409). */
     reorderError: null as ApiError | null,
   };
@@ -128,6 +129,19 @@ export function fakeApi(
         upcoming: planned.map((session) => ({ session, approachCount: approachesOf(session.id).length })),
       };
     }),
+    completeSession: vi.fn(async (sessionId, attendeeIds) => {
+      const session = state.sessions.find((s) => s.id === sessionId);
+      if (!session) throw new ApiError(404, "not_found", "No encontramos esa sesión");
+      if (session.status !== "planned") throw new ApiError(409, "conflict", "La sesión ya se marcó como realizada");
+      session.status = "completed";
+      state.attendees[sessionId] = [...attendeeIds];
+      return session;
+    }),
+    attendees: vi.fn(async (sessionId) => state.attendees[sessionId] ?? []),
+    setAttendees: vi.fn(async (sessionId, attendeeIds) => {
+      state.attendees[sessionId] = [...attendeeIds];
+      return state.attendees[sessionId];
+    }),
     projects: vi.fn(async (groupId) => state.projects.filter((p) => p.groupId === groupId)),
     project: vi.fn(async (groupId, slug) => {
       const project = state.projects.find((p) => p.groupId === groupId && p.slug === slug);
@@ -168,7 +182,7 @@ export function fakeApi(
         : null;
       const found = inScope(groupId, projectId).find((s) => s.number === number);
       if (!found) throw new ApiError(404, "not_found", "No encontramos esa sesión");
-      return found;
+      return { ...found }; // a copy, like a response: mutating state must not change what the screen already holds
     }),
     createSession: vi.fn(async (groupId, input) => {
       const projectId = input.projectId ?? null;

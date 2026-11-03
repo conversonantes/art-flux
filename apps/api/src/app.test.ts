@@ -373,3 +373,38 @@ describe("home (HU-09)", () => {
     expect((await call("tok-ana", "GET", "/groups/no-uuid/home")).status).toBe(400);
   });
 });
+
+describe("held sessions (HU-11)", () => {
+  it("marks a session as held, lists and corrects attendees, and refuses repeats", async () => {
+    const { call } = setup();
+    const group = await (await call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    const session = await (await call("tok-ana", "POST", `/groups/${group.id}/sessions`, { objective: "Analizar" })).json();
+
+    // Test users are not UUIDs, so the happy path sends nobody; the error paths use real-looking ids.
+    expect((await call("tok-ana", "PUT", `/sessions/${session.id}/attendees`, { attendeeIds: [] })).status).toBe(409); // not held yet
+    const done = await call("tok-ana", "POST", `/sessions/${session.id}/complete`, { attendeeIds: [] });
+    expect(done.status).toBe(200);
+    expect(await done.json()).toMatchObject({ id: session.id, status: "completed" });
+    expect((await call("tok-ana", "POST", `/sessions/${session.id}/complete`, { attendeeIds: [] })).status).toBe(409);
+
+    expect(await (await call("tok-owner", "GET", `/sessions/${session.id}/attendees`)).json()).toEqual([]);
+    expect((await call("tok-ana", "PUT", `/sessions/${session.id}/attendees`, { attendeeIds: [] })).status).toBe(200);
+    // Held: its planning is frozen.
+    expect((await call("tok-ana", "POST", `/sessions/${session.id}/approaches`, { text: "Tarde" })).status).toBe(409);
+  });
+
+  it("validates ids, keeps outsiders out and refuses people from outside the group", async () => {
+    const { call } = setup();
+    const group = await (await call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const session = await (await call("tok-owner", "POST", `/groups/${group.id}/sessions`, {})).json();
+    const url = `/sessions/${session.id}`;
+    expect((await call("tok-owner", "POST", `${url}/complete`, {})).status).toBe(400);
+    expect((await call("tok-owner", "POST", `${url}/complete`, { attendeeIds: ["no-uuid"] })).status).toBe(400);
+    expect((await call("tok-owner", "POST", `${url}/complete`, { attendeeIds: [randomUUID()] })).status).toBe(403);
+    expect((await call("tok-luis", "POST", `${url}/complete`, { attendeeIds: [] })).status).toBe(404);
+    expect((await call("tok-luis", "GET", `${url}/attendees`)).status).toBe(404);
+    expect((await call("tok-owner", "POST", "/sessions/no-uuid/complete", { attendeeIds: [] })).status).toBe(400);
+  });
+});

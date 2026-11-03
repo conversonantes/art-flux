@@ -13,7 +13,10 @@ import {
   createProjectWithOrigin,
   createSession,
   getSession,
+  listAttendees,
   listSessions,
+  markCompleted,
+  updateAttendees,
   updateSession,
   type Session,
 } from "../index";
@@ -279,5 +282,49 @@ describe("createProjectWithOrigin", () => {
     const { project } = await setup();
     expect((await project("S01")).slug).toBe("s01-2");
     expect((await project("s02")).slug).toBe("s02-2");
+  });
+});
+
+describe("markCompleted (HU-11)", () => {
+  it("any member closes a planned session and saves who attended", async () => {
+    const { deps, session } = await setup();
+    const s = await session("admin");
+    const done = await markCompleted(deps, { sessionId: s.id, userId: "ana", attendeeIds: ["admin", "ana", "ana"] });
+    expect(done.status).toBe("completed");
+    const who = await listAttendees(deps, { sessionId: s.id, userId: "admin" });
+    expect(who.sort()).toEqual(["admin", "ana"]);
+  });
+
+  it("refuses outsiders, a session already held, and attendees from outside the group", async () => {
+    const { deps, session } = await setup();
+    const s = await session("admin");
+    await expect(markCompleted(deps, { sessionId: s.id, userId: "stranger", attendeeIds: [] })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(markCompleted(deps, { sessionId: "missing", userId: "ana", attendeeIds: [] })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(markCompleted(deps, { sessionId: s.id, userId: "ana", attendeeIds: ["stranger"] })).rejects.toBeInstanceOf(ForbiddenError);
+    expect((await deps.sessions.getById(s.id))?.status).toBe("planned"); // nothing half-done
+
+    await markCompleted(deps, { sessionId: s.id, userId: "ana", attendeeIds: [] });
+    await expect(markCompleted(deps, { sessionId: s.id, userId: "ana", attendeeIds: [] })).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("allows nobody marked (an empty list)", async () => {
+    const { deps, session } = await setup();
+    const s = await session("admin");
+    await markCompleted(deps, { sessionId: s.id, userId: "ana", attendeeIds: [] });
+    expect(await listAttendees(deps, { sessionId: s.id, userId: "ana" })).toEqual([]);
+  });
+});
+
+describe("updateAttendees (HU-11)", () => {
+  it("corrects who attended after the session was held, and not before", async () => {
+    const { deps, session } = await setup();
+    const s = await session("admin");
+    await expect(updateAttendees(deps, { sessionId: s.id, userId: "ana", attendeeIds: ["ana"] })).rejects.toBeInstanceOf(ConflictError);
+
+    await markCompleted(deps, { sessionId: s.id, userId: "ana", attendeeIds: ["admin", "ana"] });
+    await updateAttendees(deps, { sessionId: s.id, userId: "admin", attendeeIds: ["ana"] });
+    expect(await listAttendees(deps, { sessionId: s.id, userId: "ana" })).toEqual(["ana"]);
+    await expect(updateAttendees(deps, { sessionId: s.id, userId: "ana", attendeeIds: ["stranger"] })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listAttendees(deps, { sessionId: s.id, userId: "stranger" })).rejects.toBeInstanceOf(NotFoundError);
   });
 });
