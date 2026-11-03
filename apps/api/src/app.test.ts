@@ -5,6 +5,7 @@ import {
   InMemoryGroupsRepo,
   InMemoryInvitesRepo,
   InMemoryProjectsRepo,
+  InMemorySessionsRepo,
   randomTokenGenerator,
 } from "@art-flux/core";
 import { createApp } from "./app";
@@ -14,7 +15,8 @@ function setup() {
   const invites = new InMemoryInvitesRepo(groups);
   const clock = { now: () => new Date() };
   const projects = new InMemoryProjectsRepo();
-  const deps = { groups, invites, projects, clock, tokens: randomTokenGenerator };
+  const sessionsRepo = new InMemorySessionsRepo(projects);
+  const deps = { groups, invites, projects, sessions: sessionsRepo, clock, tokens: randomTokenGenerator };
   const sessions: Record<string, string> = { "tok-owner": "owner", "tok-ana": "ana", "tok-luis": "luis" };
   const app = createApp({
     authenticator: {
@@ -217,5 +219,83 @@ describe("misc", () => {
     const res = await call("tok-owner", "GET", "/nada");
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBe("not_found");
+  });
+});
+
+describe("sessions (HU-07) and project origin (HU-05)", () => {
+  async function withGroup() {
+    const s = setup();
+    const group = await (await s.call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await s.call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await s.call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    return { ...s, group, sessionsUrl: `/groups/${group.id}/sessions` };
+  }
+
+  it("creates numbered sessions for the group and for a project, with a past date", async () => {
+    const { call, group, sessionsUrl } = await withGroup();
+    const project = await (await call("tok-owner", "POST", `/groups/${group.id}/projects`, { title: "Cristina" })).json();
+
+    const g1 = await call("tok-ana", "POST", sessionsUrl, { date: "2020-01-05", place: "Casa", objective: "Reencuentro" });
+    expect(g1.status).toBe(201);
+    expect(await g1.json()).toMatchObject({ number: 1, status: "planned", date: "2020-01-05" });
+    expect((await (await call("tok-ana", "POST", sessionsUrl, {})).json()).number).toBe(2);
+    const p1 = await (await call("tok-ana", "POST", sessionsUrl, { projectId: project.id })).json();
+    expect(p1).toMatchObject({ number: 1, projectId: project.id });
+
+    const groupLevel = await (await call("tok-ana", "GET", `${sessionsUrl}?project=none`)).json();
+    const inProject = await (await call("tok-ana", "GET", `${sessionsUrl}?project=${project.id}`)).json();
+    const all = await (await call("tok-ana", "GET", sessionsUrl)).json();
+    expect([groupLevel.length, inProject.length, all.length]).toEqual([2, 1, 3]);
+  });
+
+  it("finds a session by its address and lets its creator edit it", async () => {
+    const { call, group, sessionsUrl } = await withGroup();
+    await call("tok-owner", "POST", `/groups/${group.id}/projects`, { title: "Cristina" });
+    const project = await (await call("tok-owner", "GET", `/groups/${group.id}/projects/cristina`)).json();
+    const created = await (await call("tok-ana", "POST", sessionsUrl, { projectId: project.id, objective: "Analizar" })).json();
+
+    const found = await call("tok-ana", "GET", `${sessionsUrl}/1?project=cristina`);
+    expect((await found.json()).id).toBe(created.id);
+    expect((await call("tok-ana", "GET", `${sessionsUrl}/1`)).status).toBe(404); // group-level S01 does not exist
+
+    const patched = await call("tok-ana", "PATCH", `/sessions/${created.id}`, { place: "U. Nacional", objective: "" });
+    expect(await patched.json()).toMatchObject({ place: "U. Nacional" });
+    expect((await call("tok-owner", "PATCH", `/sessions/${created.id}`, { date: "2026-12-01" })).status).toBe(200);
+  });
+
+  it("validates input: 400 for bad dates and numbers, 404 for outsiders", async () => {
+    const { call, sessionsUrl } = await withGroup();
+    expect((await call("tok-ana", "POST", sessionsUrl, { date: "2026-02-30" })).status).toBe(400);
+    expect((await call("tok-ana", "GET", `${sessionsUrl}/cero`)).status).toBe(400);
+    expect((await call("tok-ana", "GET", `${sessionsUrl}?project=no-uuid`)).status).toBe(400);
+    expect((await call("tok-luis", "GET", sessionsUrl)).status).toBe(404);
+    expect((await call("tok-luis", "POST", sessionsUrl, {})).status).toBe(404);
+  });
+
+  it("creates a project born from a group session, which renumbers into the project", async () => {
+    const { call, group, sessionsUrl } = await withGroup();
+    const session = await (await call("tok-ana", "POST", sessionsUrl, { objective: "Reencuentro" })).json();
+
+    const created = await call("tok-owner", "POST", `/groups/${group.id}/projects`, {
+      title: "Cristina",
+      originSessionId: session.id,
+    });
+    expect(created.status).toBe(201);
+    const project = await created.json();
+    expect(project.originSessionId).toBe(session.id);
+
+    const moved = await (await call("tok-ana", "GET", `${sessionsUrl}/1?project=cristina`)).json();
+    expect(moved).toMatchObject({ id: session.id, projectId: project.id, number: 1 });
+    expect((await call("tok-ana", "GET", `${sessionsUrl}/1`)).status).toBe(404); // left the group scope
+  });
+
+  it("answers 409 when the origin already belongs to a project, and 403 for non-admins", async () => {
+    const { call, group, sessionsUrl } = await withGroup();
+    const session = await (await call("tok-ana", "POST", sessionsUrl, {})).json();
+    const url = `/groups/${group.id}/projects`;
+    expect((await call("tok-owner", "POST", url, { title: "Una", originSessionId: session.id })).status).toBe(201);
+    expect((await call("tok-owner", "POST", url, { title: "Dos", originSessionId: session.id })).status).toBe(409);
+    expect((await call("tok-ana", "POST", url, { title: "Tres", originSessionId: session.id })).status).toBe(403);
+    expect((await call("tok-owner", "POST", url, { title: "Cuatro", originSessionId: "no-uuid" })).status).toBe(400);
   });
 });

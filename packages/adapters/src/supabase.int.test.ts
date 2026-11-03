@@ -5,16 +5,22 @@ import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  ConflictError,
   ForbiddenError,
   InviteInvalidError,
   NotFoundError,
   acceptInvite,
+  attachOriginSession,
   createGroup,
   createInvite,
   createProject,
+  createProjectWithOrigin,
+  createSession,
   getProject,
+  getSession,
   listInvites,
   listProjects,
+  listSessions,
   listTeam,
   listMembers,
   randomTokenGenerator,
@@ -23,10 +29,12 @@ import {
   revokeInvite,
   setTeamRoles,
   updateProject,
+  updateSession,
 } from "@art-flux/core";
 import { SupabaseGroupsRepo } from "./groups";
 import { SupabaseInvitesRepo } from "./invites";
 import { SupabaseProjectsRepo } from "./projects";
+import { SupabaseSessionsRepo } from "./sessions";
 
 process.loadEnvFile("../../.env");
 const url = process.env.SUPABASE_URL!;
@@ -48,6 +56,7 @@ function depsFor(db: SupabaseClient, clk = clock) {
     groups: new SupabaseGroupsRepo(db),
     invites: new SupabaseInvitesRepo(db),
     projects: new SupabaseProjectsRepo(db),
+    sessions: new SupabaseSessionsRepo(db),
     clock: clk,
     tokens: randomTokenGenerator,
   };
@@ -94,6 +103,9 @@ afterAll(async () => {
   for (const id of groupIds) {
     const { data: owned } = await admin.from("projects").select("id").eq("group_id", id);
     const projectIds = (owned ?? []).map((p) => p.id);
+    // projects.origin_session_id and sessions.project_id point at each other: break the cycle first.
+    await admin.from("projects").update({ origin_session_id: null }).eq("group_id", id);
+    await admin.from("sessions").delete().eq("group_id", id);
     if (projectIds.length) await admin.from("project_team").delete().in("project_id", projectIds);
     await admin.from("projects").delete().eq("group_id", id);
     await admin.from("invites").delete().eq("group_id", id);
@@ -317,5 +329,100 @@ describe("projects and team on Supabase", () => {
     await removeFromTeam(owner.deps, { projectId: p.id, userId: owner.id, memberId: ana.id });
     expect((await listTeam(owner.deps, { projectId: p.id, userId: owner.id })).map((m) => m.userId)).toEqual([owner.id]);
     expect(await owner.deps.groups.getMemberRole(g.id, ana.id)).toBe("member");
+  });
+});
+
+describe("sessions on Supabase (HU-07)", () => {
+  async function groupWithAna() {
+    const g = await newGroup(`Sesiones ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    return g;
+  }
+  const make = (actor: typeof owner, groupId: string, extra: object = {}) =>
+    createSession(actor.deps, { id: randomUUID(), groupId, userId: actor.id, ...extra });
+
+  it("any member plans sessions; numbers are per scope; a past date is fine", async () => {
+    const g = await groupWithAna();
+    const project = await createProject(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id, title: "Cristina" });
+
+    const a = await make(ana, g.id, { date: "2020-01-05", place: "Casa", objective: "Reencuentro" });
+    const b = await make(owner, g.id);
+    const c = await make(ana, g.id, { projectId: project.id });
+    expect([a.number, b.number, c.number]).toEqual([1, 2, 1]);
+    expect(a).toMatchObject({ date: "2020-01-05", place: "Casa", status: "planned", createdBy: ana.id });
+
+    expect((await listSessions(ana.deps, { groupId: g.id, userId: ana.id, projectId: null })).length).toBe(2);
+    expect((await getSession(ana.deps, { groupId: g.id, userId: ana.id, number: 1, projectSlug: "cristina" })).id).toBe(c.id);
+
+    // Outsiders neither see nor create sessions.
+    await expect(listSessions(intruder.deps, { groupId: g.id, userId: intruder.id })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(make(intruder, g.id)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("two people planning at the same time get different numbers (real unique index + retry)", async () => {
+    const g = await groupWithAna();
+    const results = await Promise.all([make(owner, g.id), make(ana, g.id), make(owner, g.id), make(ana, g.id)]);
+    expect(results.map((s) => s.number).sort()).toEqual([1, 2, 3, 4]);
+  });
+
+  it("the creator and the admin edit; other members cannot; the database protects number and project", async () => {
+    const g = await groupWithAna();
+    const s = await make(ana, g.id, { place: "Casa" });
+    await updateSession(ana.deps, { sessionId: s.id, userId: ana.id, changes: { place: "Teatro", date: "2026-12-01" } });
+    const byAdmin = await updateSession(owner.deps, { sessionId: s.id, userId: owner.id, changes: { objective: "Nuevo" } });
+    expect(byAdmin).toMatchObject({ place: "Teatro", date: "2026-12-01", objective: "Nuevo", number: 1 });
+
+    await expect(
+      updateSession(luis.deps, { sessionId: s.id, userId: luis.id, changes: { place: "x" } }),
+    ).rejects.toBeInstanceOf(NotFoundError); // not even in the group
+
+    // Bypassing the core: changing the number or moving the session is refused by column privileges.
+    const renumber = await db.ana!.from("sessions").update({ number: 99 }).eq("id", s.id);
+    expect(renumber.error).not.toBeNull();
+    const other = await createProject(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id, title: "Otra" });
+    const move = await db.ana!.from("sessions").update({ project_id: other.id }).eq("id", s.id);
+    expect(move.error).not.toBeNull();
+    // ...and a session cannot be inserted with a project of another group.
+    const foreign = await newGroup(`Ajeno ${run}`);
+    const foreignProject = await createProject(owner.deps, { id: randomUUID(), groupId: foreign.id, userId: owner.id, title: "Ajena" });
+    const crossed = await db.owner!.from("sessions").insert({
+      id: randomUUID(), group_id: g.id, project_id: foreignProject.id, number: 50, created_by: owner.id,
+    });
+    expect(crossed.error).not.toBeNull();
+  });
+
+  it("HU-05: a group session becomes the origin of a project and renumbers to S01", async () => {
+    const g = await groupWithAna();
+    const s1 = await make(ana, g.id, { objective: "Reencuentro" });
+    const s2 = await make(ana, g.id);
+
+    const { project } = await createProjectWithOrigin(owner.deps, {
+      id: randomUUID(), groupId: g.id, userId: owner.id, title: "Cristina", originSessionId: s1.id,
+    });
+    expect(project.originSessionId).toBe(s1.id);
+    const moved = await getSession(ana.deps, { groupId: g.id, userId: ana.id, number: 1, projectSlug: "cristina" });
+    expect(moved).toMatchObject({ id: s1.id, projectId: project.id, number: 1 });
+    expect((await getProject(ana.deps, { groupId: g.id, slug: "cristina", userId: ana.id })).originSessionId).toBe(s1.id);
+
+    // The other group session keeps its place and the next project session continues after S01.
+    expect((await getSession(ana.deps, { groupId: g.id, userId: ana.id, number: 2 })).id).toBe(s2.id);
+    expect((await make(ana, g.id, { projectId: project.id })).number).toBe(2);
+
+    // Rules: one origin per project, one project per session, admins only.
+    await expect(
+      attachOriginSession(owner.deps, { projectId: project.id, sessionId: s2.id, userId: owner.id }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    const second = await createProject(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id, title: "Segunda" });
+    await expect(
+      attachOriginSession(owner.deps, { projectId: second.id, sessionId: s1.id, userId: owner.id }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      attachOriginSession(ana.deps, { projectId: second.id, sessionId: s2.id, userId: ana.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    // The database re-checks even if the core is bypassed.
+    const direct = await db.ana!.rpc("attach_origin_session", { p_project: second.id, p_session: s2.id, p_number: 1 });
+    expect(direct.error).not.toBeNull();
   });
 });

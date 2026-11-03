@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
+  ConflictError,
   ForbiddenError,
   HandleTakenError,
   InviteInvalidError,
@@ -10,23 +11,28 @@ import {
   acceptInvite,
   createGroup,
   createInvite,
-  createProject,
+  createProjectWithOrigin,
+  createSession,
   getProject,
+  getSession,
   listInvites,
   listMembers,
   listMyGroups,
   listProjects,
+  listSessions,
   listTeam,
   removeFromTeam,
   resolveInitialGroup,
   revokeInvite,
   setTeamRoles,
   updateProject,
+  updateSession,
   type AppDeps,
   type Authenticator,
   type CreateProjectInput,
   type AuthSession,
   type UpdateProjectInput,
+  type UpdateSessionInput,
 } from "@art-flux/core";
 
 export interface AppOptions {
@@ -138,13 +144,14 @@ export function createApp(options: AppOptions) {
 
   app.post("/groups/:groupId/projects", async (c) => {
     const groupId = uuid.parse(c.req.param("groupId"));
-    const { id: rawId, ...fields } = await jsonBody(c.req.raw);
-    const project = await createProject(c.get("deps"), {
+    const { id: rawId, originSessionId, ...fields } = await jsonBody(c.req.raw);
+    const { project } = await createProjectWithOrigin(c.get("deps"), {
       id: rawId === undefined ? randomUUID() : uuid.parse(rawId),
       groupId,
       userId: c.get("session").userId,
       title: str(fields.title) ?? "",
       ...(fields as Omit<CreateProjectInput, "title">),
+      ...(originSessionId === undefined ? {} : { originSessionId: uuid.parse(originSessionId) }),
     });
     return c.json(project, 201);
   });
@@ -159,6 +166,55 @@ export function createApp(options: AppOptions) {
     const projectId = uuid.parse(c.req.param("projectId"));
     const changes = (await jsonBody(c.req.raw)) as UpdateProjectInput;
     return c.json(await updateProject(c.get("deps"), { projectId, userId: c.get("session").userId, changes }));
+  });
+
+  // Sessions (HU-07) -----------------------------------------------------------------------
+  // ?project=none lists group-level sessions, ?project=<uuid> one project's; no filter lists all.
+  app.get("/groups/:groupId/sessions", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    const filter = c.req.query("project");
+    const projectId = filter === undefined ? undefined : filter === "none" ? null : uuid.parse(filter);
+    return c.json(
+      await listSessions(c.get("deps"), {
+        groupId,
+        userId: c.get("session").userId,
+        ...(projectId === undefined ? {} : { projectId }),
+      }),
+    );
+  });
+
+  app.post("/groups/:groupId/sessions", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    const { id: rawId, projectId, ...fields } = await jsonBody(c.req.raw);
+    const session = await createSession(c.get("deps"), {
+      id: rawId === undefined ? randomUUID() : uuid.parse(rawId),
+      groupId,
+      userId: c.get("session").userId,
+      ...(projectId === undefined || projectId === null ? {} : { projectId: uuid.parse(projectId) }),
+      ...(fields as { date?: string | null; place?: string | null; objective?: string | null }),
+    });
+    return c.json(session, 201);
+  });
+
+  // A session by its address: /groups/:id/sessions/2 (group S02) or ...?project=<slug> (project S02).
+  app.get("/groups/:groupId/sessions/:number", async (c) => {
+    const groupId = uuid.parse(c.req.param("groupId"));
+    const number = z.coerce.number().int().positive("Número de sesión no válido").parse(c.req.param("number"));
+    const projectSlug = c.req.query("project");
+    return c.json(
+      await getSession(c.get("deps"), {
+        groupId,
+        number,
+        userId: c.get("session").userId,
+        projectSlug,
+      }),
+    );
+  });
+
+  app.patch("/sessions/:sessionId", async (c) => {
+    const sessionId = uuid.parse(c.req.param("sessionId"));
+    const changes = (await jsonBody(c.req.raw)) as UpdateSessionInput;
+    return c.json(await updateSession(c.get("deps"), { sessionId, userId: c.get("session").userId, changes }));
   });
 
   // Team (HU-06) ---------------------------------------------------------------------------
@@ -198,6 +254,7 @@ export function createApp(options: AppOptions) {
       return c.json({ error: "validation", message: issue?.message ?? "Datos no válidos" }, 400);
     }
     if (err instanceof NotFoundError) return c.json({ error: "not_found", message: err.message }, 404);
+    if (err instanceof ConflictError) return c.json({ error: "conflict", message: err.message }, 409);
     if (err instanceof ForbiddenError) return c.json({ error: "forbidden", message: err.message }, 403);
     if (err instanceof InviteInvalidError) return c.json({ error: "invite_invalid", message: err.message }, 410);
     if (err instanceof HandleTakenError) return c.json({ error: "handle_taken", message: err.message }, 409);
