@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  InMemoryApproachesRepo,
   InMemoryGroupsRepo,
   InMemoryInvitesRepo,
   InMemoryProjectsRepo,
@@ -16,7 +17,8 @@ function setup() {
   const clock = { now: () => new Date() };
   const projects = new InMemoryProjectsRepo();
   const sessionsRepo = new InMemorySessionsRepo(projects);
-  const deps = { groups, invites, projects, sessions: sessionsRepo, clock, tokens: randomTokenGenerator };
+  const approaches = new InMemoryApproachesRepo();
+  const deps = { groups, invites, projects, sessions: sessionsRepo, approaches, clock, tokens: randomTokenGenerator };
   const sessions: Record<string, string> = { "tok-owner": "owner", "tok-ana": "ana", "tok-luis": "luis" };
   const app = createApp({
     authenticator: {
@@ -297,5 +299,56 @@ describe("sessions (HU-07) and project origin (HU-05)", () => {
     expect((await call("tok-owner", "POST", url, { title: "Dos", originSessionId: session.id })).status).toBe(409);
     expect((await call("tok-ana", "POST", url, { title: "Tres", originSessionId: session.id })).status).toBe(403);
     expect((await call("tok-owner", "POST", url, { title: "Cuatro", originSessionId: "no-uuid" })).status).toBe(400);
+  });
+});
+
+describe("approaches (HU-08)", () => {
+  async function withSession() {
+    const s = setup();
+    const group = await (await s.call("tok-owner", "POST", "/groups", { name: "Grupo" })).json();
+    const invite = await (await s.call("tok-owner", "POST", `/groups/${group.id}/invites`, {})).json();
+    await s.call("tok-ana", "POST", "/invites/accept", { token: invite.token });
+    const session = await (await s.call("tok-ana", "POST", `/groups/${group.id}/sessions`, { objective: "Analizar" })).json();
+    return { ...s, group, session, url: `/sessions/${session.id}/approaches` };
+  }
+
+  it("adds, lists, edits and removes approaches", async () => {
+    const { call, url } = await withSession();
+    const created = await call("tok-ana", "POST", url, { text: "  Calentamiento " });
+    expect(created.status).toBe(201);
+    const a = await created.json();
+    expect(a).toMatchObject({ text: "Calentamiento", position: 1, ownerId: "ana" });
+
+    const list = await (await call("tok-owner", "GET", url)).json();
+    expect(list).toHaveLength(1);
+
+    const patched = await call("tok-owner", "PATCH", `/approaches/${a.id}`, { text: "Calentamiento corporal" });
+    expect(await patched.json()).toMatchObject({ text: "Calentamiento corporal" });
+
+    expect((await call("tok-ana", "DELETE", `/approaches/${a.id}`)).status).toBe(204);
+    expect(await (await call("tok-ana", "GET", url)).json()).toEqual([]);
+    expect((await call("tok-ana", "DELETE", `/approaches/${a.id}`)).status).toBe(404);
+  });
+
+  it("reorders with the full list and answers 409 when the list does not match", async () => {
+    const { call, url } = await withSession();
+    const ids: string[] = [];
+    for (const text of ["Uno", "Dos", "Tres"]) ids.push((await (await call("tok-ana", "POST", url, { text })).json()).id);
+
+    const reordered = await call("tok-owner", "PUT", `${url}/order`, { ids: [ids[2], ids[0], ids[1]] });
+    expect(reordered.status).toBe(200);
+    expect((await reordered.json()).map((x: { text: string }) => x.text)).toEqual(["Tres", "Uno", "Dos"]);
+
+    expect((await call("tok-ana", "PUT", `${url}/order`, { ids: [ids[0]] })).status).toBe(409);
+    expect((await call("tok-ana", "PUT", `${url}/order`, { ids: "no" })).status).toBe(400);
+  });
+
+  it("validates input and hides the session from outsiders", async () => {
+    const { call, url } = await withSession();
+    expect((await call("tok-ana", "POST", url, { text: "  " })).status).toBe(400);
+    expect((await call("tok-ana", "POST", url, { text: "Algo", ownerId: "no-uuid" })).status).toBe(400);
+    expect((await call("tok-luis", "GET", url)).status).toBe(404);
+    expect((await call("tok-luis", "POST", url, { text: "Algo" })).status).toBe(404);
+    expect((await call("tok-ana", "GET", "/sessions/no-uuid/approaches")).status).toBe(400);
   });
 });

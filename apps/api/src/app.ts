@@ -9,22 +9,27 @@ import {
   InviteInvalidError,
   NotFoundError,
   acceptInvite,
+  addApproach,
   createGroup,
   createInvite,
   createProjectWithOrigin,
   createSession,
   getProject,
   getSession,
+  listApproaches,
   listInvites,
   listMembers,
   listMyGroups,
   listProjects,
   listSessions,
   listTeam,
+  removeApproach,
   removeFromTeam,
+  reorderApproaches,
   resolveInitialGroup,
   revokeInvite,
   setTeamRoles,
+  updateApproach,
   updateProject,
   updateSession,
   type AppDeps,
@@ -215,6 +220,54 @@ export function createApp(options: AppOptions) {
     const sessionId = uuid.parse(c.req.param("sessionId"));
     const changes = (await jsonBody(c.req.raw)) as UpdateSessionInput;
     return c.json(await updateSession(c.get("deps"), { sessionId, userId: c.get("session").userId, changes }));
+  });
+
+  // Approaches (HU-08) ---------------------------------------------------------------------
+  app.get("/sessions/:sessionId/approaches", async (c) => {
+    const sessionId = uuid.parse(c.req.param("sessionId"));
+    return c.json(await listApproaches(c.get("deps"), { sessionId, userId: c.get("session").userId }));
+  });
+
+  app.post("/sessions/:sessionId/approaches", async (c) => {
+    const sessionId = uuid.parse(c.req.param("sessionId"));
+    const body = await jsonBody(c.req.raw);
+    const approach = await addApproach(c.get("deps"), {
+      id: body.id === undefined ? randomUUID() : uuid.parse(body.id),
+      sessionId,
+      userId: c.get("session").userId,
+      text: str(body.text) ?? "",
+      ...(body.ownerId === undefined ? {} : { ownerId: uuid.parse(body.ownerId) }),
+    });
+    return c.json(approach, 201);
+  });
+
+  // The whole new order, by id. 409 if the list changed meanwhile: reload and try again.
+  app.put("/sessions/:sessionId/approaches/order", async (c) => {
+    const sessionId = uuid.parse(c.req.param("sessionId"));
+    const body = await jsonBody(c.req.raw);
+    const orderedIds = z.array(uuid).parse(body.ids);
+    return c.json(await reorderApproaches(c.get("deps"), { sessionId, userId: c.get("session").userId, orderedIds }));
+  });
+
+  app.patch("/approaches/:approachId", async (c) => {
+    const approachId = uuid.parse(c.req.param("approachId"));
+    const body = await jsonBody(c.req.raw);
+    return c.json(
+      await updateApproach(c.get("deps"), {
+        approachId,
+        userId: c.get("session").userId,
+        changes: {
+          ...(body.text === undefined ? {} : { text: str(body.text) ?? "" }),
+          ...(body.ownerId === undefined ? {} : { ownerId: uuid.parse(body.ownerId) }),
+        },
+      }),
+    );
+  });
+
+  app.delete("/approaches/:approachId", async (c) => {
+    const approachId = uuid.parse(c.req.param("approachId"));
+    await removeApproach(c.get("deps"), { approachId, userId: c.get("session").userId });
+    return c.body(null, 204);
   });
 
   // Team (HU-06) ---------------------------------------------------------------------------

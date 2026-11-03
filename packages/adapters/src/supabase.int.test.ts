@@ -10,6 +10,7 @@ import {
   InviteInvalidError,
   NotFoundError,
   acceptInvite,
+  addApproach,
   attachOriginSession,
   createGroup,
   createInvite,
@@ -18,20 +19,25 @@ import {
   createSession,
   getProject,
   getSession,
+  listApproaches,
   listInvites,
   listProjects,
   listSessions,
   listTeam,
   listMembers,
   randomTokenGenerator,
+  removeApproach,
   removeFromTeam,
+  reorderApproaches,
   resolveInitialGroup,
   revokeInvite,
   setTeamRoles,
+  updateApproach,
   updateProject,
   updateSession,
 } from "@art-flux/core";
 import { SupabaseGroupsRepo } from "./groups";
+import { SupabaseApproachesRepo } from "./approaches";
 import { SupabaseInvitesRepo } from "./invites";
 import { SupabaseProjectsRepo } from "./projects";
 import { SupabaseSessionsRepo } from "./sessions";
@@ -57,6 +63,7 @@ function depsFor(db: SupabaseClient, clk = clock) {
     invites: new SupabaseInvitesRepo(db),
     projects: new SupabaseProjectsRepo(db),
     sessions: new SupabaseSessionsRepo(db),
+    approaches: new SupabaseApproachesRepo(db),
     clock: clk,
     tokens: randomTokenGenerator,
   };
@@ -105,6 +112,9 @@ afterAll(async () => {
     const projectIds = (owned ?? []).map((p) => p.id);
     // projects.origin_session_id and sessions.project_id point at each other: break the cycle first.
     await admin.from("projects").update({ origin_session_id: null }).eq("group_id", id);
+    const { data: held } = await admin.from("sessions").select("id").eq("group_id", id);
+    const sessionIds = (held ?? []).map((s) => s.id);
+    if (sessionIds.length) await admin.from("approaches").delete().in("session_id", sessionIds);
     await admin.from("sessions").delete().eq("group_id", id);
     if (projectIds.length) await admin.from("project_team").delete().in("project_id", projectIds);
     await admin.from("projects").delete().eq("group_id", id);
@@ -424,5 +434,109 @@ describe("sessions on Supabase (HU-07)", () => {
     // The database re-checks even if the core is bypassed.
     const direct = await db.ana!.rpc("attach_origin_session", { p_project: second.id, p_session: s2.id, p_number: 1 });
     expect(direct.error).not.toBeNull();
+  });
+});
+
+describe("approaches on Supabase (HU-08)", () => {
+  async function plannedSession() {
+    const g = await newGroup(`Planteamientos ${run}`);
+    const invite = await createInvite(owner.deps, { id: randomUUID(), groupId: g.id, userId: owner.id });
+    await acceptInvite(ana.deps, { token: invite.token, userId: ana.id });
+    const session = await createSession(ana.deps, { id: randomUUID(), groupId: g.id, userId: ana.id, objective: "Analizar" });
+    return { g, session };
+  }
+  const add = (actor: typeof owner, sessionId: string, text: string, ownerId?: string) =>
+    addApproach(actor.deps, { id: randomUUID(), sessionId, userId: actor.id, text, ownerId });
+  const order = async (actor: typeof owner, sessionId: string) =>
+    (await listApproaches(actor.deps, { sessionId, userId: actor.id })).map((a) => a.text);
+
+  it("members add, edit and remove; the owner must belong to the group", async () => {
+    const { session } = await plannedSession();
+    const a = await add(ana, session.id, "  Calentamiento corporal ");
+    const b = await add(owner, session.id, "Improvisación", ana.id);
+    expect(a).toMatchObject({ text: "Calentamiento corporal", position: 1, ownerId: ana.id });
+    expect(b).toMatchObject({ position: 2, ownerId: ana.id });
+
+    const edited = await updateApproach(owner.deps, { approachId: a.id, userId: owner.id, changes: { text: "Calentamiento", ownerId: owner.id } });
+    expect(edited).toMatchObject({ text: "Calentamiento", ownerId: owner.id });
+
+    await expect(add(ana, session.id, "Algo", intruder.id)).rejects.toBeInstanceOf(ForbiddenError);
+    // The database says no as well, even if the core is bypassed.
+    const direct = await db.ana!.from("approaches").insert({
+      id: randomUUID(), session_id: session.id, position: 9, text: "x", owner_id: intruder.id, created_by: ana.id,
+    });
+    expect(direct.error).not.toBeNull();
+
+    await removeApproach(ana.deps, { approachId: b.id, userId: ana.id });
+    expect(await order(owner, session.id)).toEqual(["Calentamiento"]);
+    expect((await add(ana, session.id, "Siguiente")).position).toBe(2); // continues after the highest, not the count
+  });
+
+  it("reorders atomically; stale lists are refused; position cannot be edited directly", async () => {
+    const { session } = await plannedSession();
+    const a = await add(ana, session.id, "Calentamiento");
+    const b = await add(ana, session.id, "Improvisación");
+    const c = await add(ana, session.id, "Análisis");
+
+    const list = await reorderApproaches(owner.deps, { sessionId: session.id, userId: owner.id, orderedIds: [c.id, a.id, b.id] });
+    expect(list.map((x) => [x.text, x.position])).toEqual([["Análisis", 1], ["Calentamiento", 2], ["Improvisación", 3]]);
+
+    await expect(
+      reorderApproaches(ana.deps, { sessionId: session.id, userId: ana.id, orderedIds: [a.id] }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    // Bypassing the core: the database function and column privileges refuse too.
+    const partial = await db.ana!.rpc("reorder_approaches", { p_session: session.id, p_ids: [a.id] });
+    expect(partial.error).not.toBeNull();
+    const moved = await db.ana!.from("approaches").update({ position: 99 }).eq("id", a.id);
+    expect(moved.error).not.toBeNull();
+    expect(await order(owner, session.id)).toEqual(["Análisis", "Calentamiento", "Improvisación"]);
+  });
+
+  it("two people reordering at once end with one consistent order", async () => {
+    const { session } = await plannedSession();
+    const items = [await add(ana, session.id, "A"), await add(ana, session.id, "B"), await add(ana, session.id, "C")];
+    const [a, b, c] = items.map((x) => x.id) as [string, string, string];
+    await Promise.all([
+      reorderApproaches(owner.deps, { sessionId: session.id, userId: owner.id, orderedIds: [c, b, a] }),
+      reorderApproaches(ana.deps, { sessionId: session.id, userId: ana.id, orderedIds: [b, a, c] }),
+    ]);
+    const final = await listApproaches(owner.deps, { sessionId: session.id, userId: owner.id });
+    expect(final.map((x) => x.position)).toEqual([1, 2, 3]); // no duplicates or gaps
+    expect(["C,B,A", "B,A,C"]).toContain(final.map((x) => x.text).join(","));
+  });
+
+  it("outsiders see and change nothing", async () => {
+    const { session } = await plannedSession();
+    const a = await add(ana, session.id, "Privado");
+    await expect(listApproaches(intruder.deps, { sessionId: session.id, userId: intruder.id })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(add(intruder, session.id, "Intruso")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      reorderApproaches(intruder.deps, { sessionId: session.id, userId: intruder.id, orderedIds: [a.id] }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    const direct = await db.intruder!.from("approaches").insert({
+      id: randomUUID(), session_id: session.id, position: 5, text: "x", owner_id: intruder.id, created_by: intruder.id,
+    });
+    expect(direct.error).not.toBeNull();
+  });
+
+  it("once the session was held, planning is frozen (core and database)", async () => {
+    const { session } = await plannedSession();
+    const a = await add(ana, session.id, "Antes");
+    await admin.from("sessions").update({ status: "completed" }).eq("id", session.id); // HU-11 will do this properly
+
+    await expect(add(ana, session.id, "Tarde")).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      updateApproach(ana.deps, { approachId: a.id, userId: ana.id, changes: { text: "Cambio" } }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      reorderApproaches(ana.deps, { sessionId: session.id, userId: ana.id, orderedIds: [a.id] }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    const direct = await db.ana!.from("approaches").insert({
+      id: randomUUID(), session_id: session.id, position: 2, text: "Tarde", owner_id: ana.id, created_by: ana.id,
+    });
+    expect(direct.error).not.toBeNull();
+    expect(await order(ana, session.id)).toEqual(["Antes"]); // still readable
   });
 });

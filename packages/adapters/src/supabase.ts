@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomTokenGenerator, type AppDeps, type AuthSession, type Authenticator } from "@art-flux/core";
+import { SupabaseApproachesRepo } from "./approaches";
 import { SupabaseGroupsRepo } from "./groups";
 import { SupabaseInvitesRepo } from "./invites";
 import { SupabaseProjectsRepo } from "./projects";
@@ -44,6 +45,7 @@ export function supabaseWiring(env: SupabaseEnv): Wiring {
         invites: new SupabaseInvitesRepo(db),
         projects: new SupabaseProjectsRepo(db),
         sessions: new SupabaseSessionsRepo(db),
+        approaches: new SupabaseApproachesRepo(db),
         clock,
         tokens: randomTokenGenerator,
       };
