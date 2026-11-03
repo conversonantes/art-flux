@@ -28,7 +28,7 @@ Siempre `{ "error": "<código>", "message": "<texto en español listo para mostr
 | `GET /health` | cualquiera | Comprobación de vida |
 | `GET /me/start?last=<groupId>` | sesión | A dónde ir al entrar: `{destination: "group" \| "choose" \| "none"}` |
 | `GET /me/groups` | sesión | Mis grupos |
-| `POST /groups` | sesión | Crear grupo (`name`, `city?`); quien lo crea queda admin |
+| `POST /groups` | sesión | Crear grupo (`name`, `city?`); quien lo crea queda admin. 409 si ya administra 3 grupos (el tope por persona) |
 | `GET /groups/:groupId/members` | miembro | Miembros con su nombre y rol |
 
 ### Invitaciones (HU-03)

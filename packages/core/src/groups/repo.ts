@@ -13,6 +13,8 @@ export interface GroupsRepo {
   /** Saves the group and its first member atomically. Throws HandleTakenError. */
   create(group: Group, admin: Member): Promise<void>;
   listByUser(userId: string): Promise<Group[]>;
+  /** How many groups the user administers (the ones they created: creating makes you its admin). */
+  countAdminOf(userId: string): Promise<number>;
   getById(groupId: string): Promise<Group | null>;
   /** Role of the user in the group, or null if not a member. */
   getMemberRole(groupId: string, userId: string): Promise<MemberRole | null>;

@@ -560,3 +560,15 @@ describe("material (HU-13)", () => {
     expect((await call("tok-ana", "GET", `/projects/${project.id}/media?session=no-uuid`)).status).toBe(400);
   });
 });
+
+describe("group limit", () => {
+  it("answers 409 with a clear message when someone reaches the ceiling, and only for them", async () => {
+    const { call } = setup();
+    for (let n = 1; n <= 3; n++) expect((await call("tok-owner", "POST", "/groups", { name: `Grupo ${n}` })).status).toBe(201);
+    const over = await call("tok-owner", "POST", "/groups", { name: "Uno más" });
+    expect(over.status).toBe(409);
+    expect((await over.json()).message).toMatch(/hasta 3 grupos/);
+    expect((await call("tok-ana", "POST", "/groups", { name: "De Ana" })).status).toBe(201);
+    expect(await (await call("tok-owner", "GET", "/me/groups")).json()).toHaveLength(3);
+  });
+});

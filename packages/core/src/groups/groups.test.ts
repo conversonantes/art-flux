@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ForbiddenError } from "../errors";
+import { ConflictError, ForbiddenError } from "../errors";
 import {
   HandleTakenError,
   InMemoryGroupsRepo,
+  MAX_GROUPS_PER_USER,
   createGroup,
   handleBase,
   handleCandidate,
@@ -134,5 +135,27 @@ describe("listMembers", () => {
     await expect(listMembers(deps, { groupId: "g1", userId: "stranger" })).rejects.toBeInstanceOf(
       ForbiddenError,
     );
+  });
+});
+
+describe("createGroup limit", () => {
+  const make = (deps: ReturnType<typeof setup>["deps"], userId: string, n: number) =>
+    createGroup(deps, { id: `g-${userId}-${n}`, userId, name: `Grupo ${userId} ${n}` });
+
+  it("lets one person create up to the ceiling, then explains why not", async () => {
+    const { groups, deps } = setup();
+    for (let n = 1; n <= MAX_GROUPS_PER_USER; n++) await make(deps, "u1", n);
+    await expect(make(deps, "u1", 99)).rejects.toBeInstanceOf(ConflictError);
+    await expect(make(deps, "u1", 99)).rejects.toThrow(/hasta 3 grupos/);
+    expect(groups.groups).toHaveLength(MAX_GROUPS_PER_USER); // nothing half-made
+  });
+
+  it("does not count groups joined by invitation, nor other people's groups", async () => {
+    const { groups, deps } = setup();
+    for (let n = 1; n <= MAX_GROUPS_PER_USER; n++) await make(deps, "u1", n);
+    for (let n = 1; n <= 5; n++) await groups.addMember({ groupId: `g-u1-1`, userId: `guest${n}`, role: "member" });
+    await groups.addMember({ groupId: "g-u1-1", userId: "u2", role: "member" });
+    await expect(make(deps, "u2", 1)).resolves.toBeDefined(); // u2 belongs to a group, but has created none
+    await expect(make(deps, "guest1", 1)).resolves.toBeDefined();
   });
 });

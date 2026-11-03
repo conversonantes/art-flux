@@ -24,6 +24,10 @@ export class InMemoryGroupsRepo implements GroupsRepo {
     return this.groups.filter((g) => ids.has(g.id));
   }
 
+  async countAdminOf(userId: string): Promise<number> {
+    return this.members.filter((x) => x.userId === userId && x.role === "admin").length;
+  }
+
   async getById(groupId: string): Promise<Group | null> {
     return this.groups.find((g) => g.id === groupId) ?? null;
   }

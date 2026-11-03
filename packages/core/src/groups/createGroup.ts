@@ -1,8 +1,12 @@
 import { handleBase, handleCandidate } from "./handle";
+import { ConflictError } from "../errors";
 import { createGroupSchema, type CreateGroupInput, type Group } from "./group";
 import { HandleTakenError, type Clock, type GroupsRepo } from "./repo";
 
 const MAX_ATTEMPTS = 50;
+
+/** Groups one person can create. The API is public: without a ceiling anyone could fill it with groups. */
+export const MAX_GROUPS_PER_USER = 3;
 
 export interface CreateGroupDeps {
   groups: GroupsRepo;
@@ -15,6 +19,11 @@ export async function createGroup(
 ): Promise<Group> {
   const { id, userId, ...data } = input;
   const { name, city } = createGroupSchema.parse(data);
+  if ((await deps.groups.countAdminOf(userId)) >= MAX_GROUPS_PER_USER) {
+    throw new ConflictError(
+      `Puedes crear hasta ${MAX_GROUPS_PER_USER} grupos. Si necesitas otro, escríbenos o pídele a un admin que te invite al suyo.`,
+    );
+  }
   const base = handleBase(name);
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {

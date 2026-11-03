@@ -64,6 +64,17 @@ export class SupabaseGroupsRepo implements GroupsRepo {
     return (data as GroupRow[]).map(toGroup);
   }
 
+  async countAdminOf(userId: string): Promise<number> {
+    const { count, error } = await this.db
+      .from("members")
+      .select("group_id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .is("deleted_at", null);
+    if (error) throw error;
+    return count ?? 0;
+  }
+
   async getById(groupId: string): Promise<Group | null> {
     const { data, error } = await this.db
       .from("groups")

@@ -33,6 +33,8 @@ import {
   markCompleted,
   updateAttendees,
   getSession,
+  handleBase,
+  handleCandidate,
   listApproaches,
   listInvites,
   listProjects,
@@ -112,8 +114,16 @@ async function makeActor(label: string): Promise<Actor> {
 let owner: Actor, ana: Actor, luis: Actor, intruder: Actor;
 const groupIds: string[] = [];
 
+/**
+ * A group for a test. It goes straight to the repository: the suite needs many groups from the same
+ * person, and the core's ceiling (3 per person) has its own test below.
+ */
 async function newGroup(name: string) {
-  const g = await createGroup(owner.deps, { id: randomUUID(), userId: owner.id, name });
+  // The same handles the core would give: the name, then name-2, name-3…
+  let handle = handleBase(name);
+  for (let n = 2; await owner.deps.groups.handleExists(handle); n++) handle = handleCandidate(handleBase(name), n);
+  const g = { id: randomUUID(), handle, name, createdAt: new Date() };
+  await owner.deps.groups.create(g, { groupId: g.id, userId: owner.id, role: "admin" });
   groupIds.push(g.id);
   return g;
 }
@@ -161,6 +171,23 @@ describe("profiles", () => {
     const { data, error } = await admin.from("profiles").select("id").in("id", [owner.id, ana.id]);
     expect(error).toBeNull();
     expect(data?.map((p) => p.id).sort()).toEqual([owner.id, ana.id].sort());
+  });
+});
+
+describe("group limit on Supabase", () => {
+  it("counts only the groups someone created, and stops at the ceiling (3)", async () => {
+    const made: string[] = [];
+    for (let n = 1; n <= 3; n++) {
+      const g = await createGroup(luis.deps, { id: randomUUID(), userId: luis.id, name: `Tope ${n} ${run}` });
+      made.push(g.id);
+      groupIds.push(g.id);
+    }
+    expect(await luis.deps.groups.countAdminOf(luis.id)).toBe(3);
+    await expect(
+      createGroup(luis.deps, { id: randomUUID(), userId: luis.id, name: `Tope 4 ${run}` }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    // Someone else is not affected, and belonging to groups does not count.
+    expect(await ana.deps.groups.countAdminOf(ana.id)).toBe(0);
   });
 });
 
